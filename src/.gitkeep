@@ -1,0 +1,12 @@
+# Source code directory
+# Contains:
+# - data_pipeline/ : Web scraping and data processing modules
+# - recommendation/ : RAG engine and recommendation logic
+# - api/ : FastAPI backend application
+
+
+
+
+
+
+
