@@ -1,0 +1,25 @@
+================================================================================
+EVALUATION SUMMARY
+================================================================================
+Iteration: baseline
+Timestamp: 2025-12-30T16:59:46.538329
+Dataset: Gen_AI Dataset.xlsx
+Queries: 10
+Top K: 10
+
+Configuration:
+  RAG Pipeline: Enabled
+  LLM Re-ranking: Enabled
+  Query Expansion: Disabled
+
+Metrics:
+  Mean Recall@10: 0.0000
+  Mean Recall@5:  0.0000
+  Mean Precision@10: 0.0000
+  F1@10: 0.0000
+
+Error Analysis:
+  Low Recall (<0.5): 10/10
+  Zero Recall: 10/10
+  Perfect Recall: 0/10
+================================================================================

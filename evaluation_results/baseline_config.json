@@ -1,0 +1,10 @@
+{
+  "iteration": "baseline",
+  "timestamp": "2025-12-30T16:59:46.538329",
+  "dataset": "Gen_AI Dataset.xlsx",
+  "top_k": 10,
+  "use_rag": true,
+  "use_llm_reranking": true,
+  "use_query_expansion": false,
+  "num_queries": 10
+}
