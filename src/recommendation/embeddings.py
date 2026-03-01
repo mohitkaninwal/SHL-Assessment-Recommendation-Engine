@@ -7,8 +7,8 @@ import logging
 import os
 from typing import List, Dict, Optional
 import numpy as np
-import requests
 from dotenv import load_dotenv
+from huggingface_hub import InferenceClient
 
 load_dotenv()
 
@@ -34,6 +34,7 @@ class EmbeddingGenerator:
         self.model = None
         self.hf_api_key = os.getenv('HF_API_KEY', '').strip()
         self.embedding_dimension = int(os.getenv('EMBEDDING_DIMENSION', '384'))
+        self.hf_client = None
 
         logger.info("Embedding backend: %s | model: %s", self.backend, self.model_name)
 
@@ -43,6 +44,7 @@ class EmbeddingGenerator:
                 raise ValueError(
                     "EMBEDDING_BACKEND=hf_inference requires HF_API_KEY in environment variables."
                 )
+            self.hf_client = InferenceClient(provider="hf-inference", api_key=self.hf_api_key)
 
         if self.backend == 'local':
             self._init_local_model()
@@ -64,22 +66,22 @@ class EmbeddingGenerator:
 
     def _generate_hf_embedding(self, text: str) -> np.ndarray:
         """
-        Generate embedding using Hugging Face Inference API.
+        Generate embedding using Hugging Face Inference API via InferenceClient.
         Supports both [dim] and [tokens][dim] style responses.
         """
-        endpoint = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{self.model_name}"
-        headers = {"Authorization": f"Bearer {self.hf_api_key}"}
-        payload = {"inputs": text, "options": {"wait_for_model": True}}
-
         try:
-            response = requests.post(endpoint, headers=headers, json=payload, timeout=30)
-            response.raise_for_status()
-            data = response.json()
+            if self.hf_client is None:
+                self.hf_client = InferenceClient(provider="hf-inference", api_key=self.hf_api_key)
+
+            data = self.hf_client.feature_extraction(text, model=self.model_name)
 
             # Cases:
-            # 1) Flat vector: [0.1, ...]
-            # 2) Token vectors: [[...], [...], ...]
-            if isinstance(data, list) and data and isinstance(data[0], (float, int)):
+            # 1) numpy vector: np.ndarray([dim])
+            # 2) Flat vector: [0.1, ...]
+            # 3) Token vectors: [[...], [...], ...]
+            if isinstance(data, np.ndarray):
+                vector = data.astype(np.float32)
+            elif isinstance(data, list) and data and isinstance(data[0], (float, int)):
                 vector = np.asarray(data, dtype=np.float32)
             elif isinstance(data, list) and data and isinstance(data[0], list):
                 token_matrix = np.asarray(data, dtype=np.float32)
@@ -252,8 +254,6 @@ if __name__ == "__main__":
     print(f"Generated {len(embeddings)} embeddings")
     print(f"Embedding dimension: {len(embeddings[0])}")
     print(f"Sample text: {texts[0][:100]}...")
-
-
 
 
 
