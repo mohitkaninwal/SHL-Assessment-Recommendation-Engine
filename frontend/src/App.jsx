@@ -10,7 +10,22 @@ const quickPrompts = [
 ]
 
 async function requestJson(url, options = {}) {
-  const response = await fetch(url, options)
+  const { timeoutMs = 15000, ...fetchOptions } = options
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs)
+  let response
+
+  try {
+    response = await fetch(url, { ...fetchOptions, signal: controller.signal })
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('Request timed out. Backend might be down or waking up.')
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timeoutId)
+  }
+
   let payload = null
 
   try {
@@ -20,7 +35,8 @@ async function requestJson(url, options = {}) {
   }
 
   if (!response.ok) {
-    const message = payload?.error || payload?.detail || `HTTP ${response.status}`
+    const base = payload?.error || payload?.detail || `HTTP ${response.status}`
+    const message = `${base} (status ${response.status})`
     throw new Error(message)
   }
 
@@ -39,33 +55,34 @@ export default function App() {
   const [healthInfo, setHealthInfo] = useState(null)
   const [recommendationInfo, setRecommendationInfo] = useState(null)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [healthLoading, setHealthLoading] = useState(false)
+  const [recommendLoading, setRecommendLoading] = useState(false)
 
   const normalizedApiBase = useMemo(() => apiBaseUrl.replace(/\/$/, ''), [apiBaseUrl])
 
   const fetchRoot = async () => {
     setError('')
-    setLoading(true)
+    setHealthLoading(true)
     try {
       const data = await requestJson(`${normalizedApiBase}/`)
       setRootInfo(data)
     } catch (eventError) {
       setError(`Root endpoint failed: ${eventError.message}`)
     } finally {
-      setLoading(false)
+      setHealthLoading(false)
     }
   }
 
   const fetchHealth = async () => {
     setError('')
-    setLoading(true)
+    setHealthLoading(true)
     try {
       const data = await requestJson(`${normalizedApiBase}/health`)
       setHealthInfo(data)
     } catch (eventError) {
       setError(`Health endpoint failed: ${eventError.message}`)
     } finally {
-      setLoading(false)
+      setHealthLoading(false)
     }
   }
 
@@ -89,7 +106,7 @@ export default function App() {
   const fetchRecommendations = async (event) => {
     event.preventDefault()
     setError('')
-    setLoading(true)
+    setRecommendLoading(true)
     setRecommendationInfo(null)
 
     try {
@@ -107,7 +124,7 @@ export default function App() {
     } catch (eventError) {
       setError(`Recommend endpoint failed: ${eventError.message}`)
     } finally {
-      setLoading(false)
+      setRecommendLoading(false)
     }
   }
 
@@ -141,7 +158,7 @@ export default function App() {
                 type="button"
                 className="prompt-card"
                 onClick={() => setQuery(prompt)}
-                disabled={loading}
+                disabled={recommendLoading}
               >
                 <span>{prompt}</span>
                 <i>◌</i>
@@ -149,7 +166,7 @@ export default function App() {
             ))}
           </section>
 
-            <button type="button" className="refresh-btn" onClick={() => setQuery(quickPrompts[0])} disabled={loading}>
+            <button type="button" className="refresh-btn" onClick={() => setQuery(quickPrompts[0])} disabled={recommendLoading}>
             ↻ Reset Prompt
           </button>
 
@@ -168,12 +185,12 @@ export default function App() {
 
             <div className="composer-bottom">
               <div className="left-actions">
-                <button type="button" className="ghost" onClick={() => setQuery('')} disabled={loading}>⊕ Clear</button>
-                <button type="button" className="ghost" onClick={() => setQuery(quickPrompts[Math.floor(Math.random() * quickPrompts.length)])} disabled={loading}>↺ Random Prompt</button>
+                <button type="button" className="ghost" onClick={() => setQuery('')} disabled={recommendLoading}>⊕ Clear</button>
+                <button type="button" className="ghost" onClick={() => setQuery(quickPrompts[Math.floor(Math.random() * quickPrompts.length)])} disabled={recommendLoading}>↺ Random Prompt</button>
               </div>
               <div className="right-actions">
                 <span>{query.length}/1000</span>
-                <button type="submit" className="send" disabled={loading}>{loading ? '…' : '➜'}</button>
+                <button type="submit" className="send" disabled={recommendLoading}>{recommendLoading ? '…' : '➜'}</button>
               </div>
             </div>
           </form>
@@ -227,8 +244,8 @@ export default function App() {
                   Include explanation
                 </label>
 
-                <button type="button" onClick={fetchRoot} disabled={loading}>Test /</button>
-                <button type="button" onClick={fetchHealth} disabled={loading}>Test /health</button>
+                <button type="button" onClick={fetchRoot} disabled={healthLoading || recommendLoading}>Test /</button>
+                <button type="button" onClick={fetchHealth} disabled={healthLoading || recommendLoading}>Test /health</button>
               </div>
 
               <p className="status-line">
