@@ -260,6 +260,14 @@ export default function App() {
           {recommendationInfo && (
             <section className="results">
               <h3>Recommendations ({recommendationInfo.returned})</h3>
+              <p className="status-line">
+                Total retrieved from backend: <strong>{recommendationInfo.total_found ?? 0}</strong>
+              </p>
+              {Number(recommendationInfo.returned || 0) === 0 && (
+                <p className="error-box">
+                  No assessments were returned for this query. Try another query or disable balanced skill filtering in Developer Controls.
+                </p>
+              )}
               <table>
                 <thead>
                   <tr>

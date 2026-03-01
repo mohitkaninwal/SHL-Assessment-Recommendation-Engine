@@ -48,7 +48,7 @@ class RAGPipeline:
         self,
         query: str,
         top_k: int = 10,
-        min_score: float = 0.0,
+        min_score: float = -1.0,
         balance_skills: bool = True,
         include_explanation: bool = False
     ) -> Dict:

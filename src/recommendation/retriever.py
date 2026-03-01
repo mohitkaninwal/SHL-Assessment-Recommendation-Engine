@@ -120,7 +120,7 @@ class AssessmentRetriever:
         query: str,
         top_k: int = 10,
         test_type_filter: Optional[str] = None,
-        min_score: float = 0.0
+        min_score: float = -1.0
     ) -> List[Dict]:
         """
         Retrieve relevant assessments for a query
@@ -156,8 +156,11 @@ class AssessmentRetriever:
             include_metadata=True
         )
         
-        # Filter by minimum score
-        filtered_results = [r for r in results if r['score'] >= min_score]
+        # Filter by minimum score when explicitly requested.
+        if min_score is None:
+            filtered_results = results
+        else:
+            filtered_results = [r for r in results if r['score'] >= min_score]
         
         # Limit to top_k
         filtered_results = filtered_results[:top_k]
@@ -171,7 +174,7 @@ class AssessmentRetriever:
         query: str,
         top_k: int = 10,
         hard_skill_ratio: float = 0.6,
-        min_score: float = 0.0
+        min_score: float = -1.0
     ) -> List[Dict]:
         """
         Retrieve balanced mix of hard skills (K) and soft skills (P) assessments
@@ -185,9 +188,6 @@ class AssessmentRetriever:
         Returns:
             List of balanced assessment results
         """
-        # Detect preference
-        preferred_type = self.preprocessor.detect_test_type_preference(query)
-        
         # Calculate counts
         k_count = int(top_k * hard_skill_ratio)
         p_count = top_k - k_count
@@ -199,7 +199,22 @@ class AssessmentRetriever:
         # Combine and sort by score
         combined_results = k_results + p_results
         combined_results.sort(key=lambda x: x['score'], reverse=True)
-        
+
+        # Fallback: if strict K/P filters return nothing (index metadata or score threshold mismatch),
+        # fall back to unfiltered retrieval so API does not return an empty response by default.
+        if not combined_results:
+            logger.warning(
+                "Balanced retrieval returned 0 results; falling back to unfiltered retrieval "
+                "(min_score=%s)",
+                min_score
+            )
+            combined_results = self.retrieve(
+                query=query,
+                top_k=top_k,
+                test_type_filter=None,
+                min_score=min_score
+            )
+
         # Limit to top_k
         balanced_results = combined_results[:top_k]
         
@@ -251,7 +266,6 @@ def create_retriever(vector_db: VectorDB, embedding_model: Optional[str] = None)
 if __name__ == "__main__":
     print("Retriever module loaded successfully")
     print("Note: Requires initialized VectorDB and EmbeddingGenerator")
-
 
 
 
