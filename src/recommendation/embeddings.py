@@ -40,11 +40,9 @@ class EmbeddingGenerator:
         if self.backend == 'hf_inference':
             # Remote inference avoids loading heavy local transformer models in API containers.
             if not self.hf_api_key:
-                logger.warning(
-                    "EMBEDDING_BACKEND=hf_inference but HF_API_KEY is missing; "
-                    "falling back to local backend."
+                raise ValueError(
+                    "EMBEDDING_BACKEND=hf_inference requires HF_API_KEY in environment variables."
                 )
-                self.backend = 'local'
 
         if self.backend == 'local':
             self._init_local_model()
@@ -254,7 +252,6 @@ if __name__ == "__main__":
     print(f"Generated {len(embeddings)} embeddings")
     print(f"Embedding dimension: {len(embeddings[0])}")
     print(f"Sample text: {texts[0][:100]}...")
-
 
 
 
