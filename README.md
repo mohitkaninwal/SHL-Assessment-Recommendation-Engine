@@ -52,6 +52,10 @@ Set required values in `.env`:
 - `API_PORT=8000`
 - `FRONTEND_PORT=8501`
 - `API_BASE_URL=http://localhost:8000`
+- Optional low-memory mode for small cloud instances:
+  - `EMBEDDING_BACKEND=hf_inference`
+  - `HF_API_KEY=<your_huggingface_token>`
+  - `EMBEDDING_DIMENSION=384`
 
 ## How To Use (End-to-End)
 
@@ -140,6 +144,14 @@ docker compose up --build
 ### Render
 
 `render.yaml` is included for API + frontend services.
+
+For Render free tier (512MB RAM), use remote embeddings to avoid loading local transformer weights in API memory:
+
+- Set `EMBEDDING_BACKEND=hf_inference`
+- Set `HF_API_KEY` in Render secret environment variables
+- Keep `EMBEDDING_DIMENSION=384` for `sentence-transformers/all-MiniLM-L6-v2`
+
+The API now initializes the recommendation engine lazily on first `/recommend` request to reduce cold-start memory spikes.
 
 ## Final Submission Artifacts
 

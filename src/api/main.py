@@ -5,6 +5,7 @@ FastAPI Application for SHL Assessment Recommendation System
 import os
 import sys
 import logging
+import asyncio
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from pathlib import Path
@@ -48,6 +49,7 @@ app.add_middleware(
 
 # Global recommendation engine instance
 recommendation_engine: Optional[RecommendationEngine] = None
+engine_init_lock = asyncio.Lock()
 
 
 # Request/Response Models
@@ -128,25 +130,31 @@ class ErrorResponse(BaseModel):
 # Startup and Shutdown Events
 @app.on_event("startup")
 async def startup_event():
-    """Initialize recommendation engine on startup"""
-    global recommendation_engine
-    
+    """Startup hook (engine is initialized lazily on first /recommend request)."""
     logger.info("Starting SHL Assessment Recommendation API...")
-    
-    try:
-        # Initialize recommendation engine
-        logger.info("Initializing recommendation engine...")
-        recommendation_engine = RecommendationEngine(
-            use_rag=True,
-            use_llm_reranking=True,
-            use_query_expansion=False
-        )
-        logger.info("✓ Recommendation engine initialized successfully")
-        
-    except Exception as e:
-        logger.error(f"Failed to initialize recommendation engine: {e}", exc_info=True)
-        # Don't fail startup, but log the error
-        recommendation_engine = None
+
+
+async def get_or_init_engine() -> Optional[RecommendationEngine]:
+    """Initialize recommendation engine once, lazily, to reduce cold-start memory spikes."""
+    global recommendation_engine
+    if recommendation_engine is not None:
+        return recommendation_engine
+
+    async with engine_init_lock:
+        if recommendation_engine is not None:
+            return recommendation_engine
+        try:
+            logger.info("Initializing recommendation engine (lazy)...")
+            recommendation_engine = RecommendationEngine(
+                use_rag=True,
+                use_llm_reranking=True,
+                use_query_expansion=False
+            )
+            logger.info("✓ Recommendation engine initialized successfully")
+        except Exception as e:
+            logger.error("Failed to initialize recommendation engine: %s", e, exc_info=True)
+            recommendation_engine = None
+        return recommendation_engine
 
 
 @app.on_event("shutdown")
@@ -208,7 +216,7 @@ async def health_check():
     Returns:
         Health status with timestamp
     """
-    engine_status = "healthy" if recommendation_engine is not None else "unavailable"
+    engine_status = "healthy" if recommendation_engine is not None else "not_initialized"
     
     return HealthResponse(
         status="healthy",
@@ -244,8 +252,10 @@ async def get_recommendations(request: RecommendationRequest):
     Raises:
         HTTPException: If recommendation engine is unavailable or request fails
     """
+    engine = await get_or_init_engine()
+
     # Check if engine is available
-    if recommendation_engine is None:
+    if engine is None:
         logger.error("Recommendation engine is not available")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -265,7 +275,7 @@ async def get_recommendations(request: RecommendationRequest):
         logger.info(f"Processing recommendation request: query='{request.query[:50]}...', top_k={request.top_k}")
         
         # Get recommendations
-        result = recommendation_engine.recommend(
+        result = engine.recommend(
             query=request.query,
             top_k=request.top_k,
             balance_skills=request.balance_skills,

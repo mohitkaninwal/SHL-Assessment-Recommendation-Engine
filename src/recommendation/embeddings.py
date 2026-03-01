@@ -7,7 +7,7 @@ import logging
 import os
 from typing import List, Dict, Optional
 import numpy as np
-from sentence_transformers import SentenceTransformer
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -30,15 +30,77 @@ class EmbeddingGenerator:
             'EMBEDDING_MODEL',
             'sentence-transformers/all-MiniLM-L6-v2'
         )
-        logger.info(f"Loading embedding model: {self.model_name}")
-        
+        self.backend = os.getenv('EMBEDDING_BACKEND', 'local').strip().lower()
+        self.model = None
+        self.hf_api_key = os.getenv('HF_API_KEY', '').strip()
+        self.embedding_dimension = int(os.getenv('EMBEDDING_DIMENSION', '384'))
+
+        logger.info("Embedding backend: %s | model: %s", self.backend, self.model_name)
+
+        if self.backend == 'hf_inference':
+            # Remote inference avoids loading heavy local transformer models in API containers.
+            if not self.hf_api_key:
+                logger.warning(
+                    "EMBEDDING_BACKEND=hf_inference but HF_API_KEY is missing; "
+                    "falling back to local backend."
+                )
+                self.backend = 'local'
+
+        if self.backend == 'local':
+            self._init_local_model()
+
+    def _init_local_model(self) -> None:
+        """Initialize local SentenceTransformer lazily."""
+        if self.model is not None:
+            return
+        logger.info(f"Loading local embedding model: {self.model_name}")
         try:
+            from sentence_transformers import SentenceTransformer
+
             self.model = SentenceTransformer(self.model_name)
             self.embedding_dimension = self.model.get_sentence_embedding_dimension()
-            logger.info(f"Model loaded successfully. Embedding dimension: {self.embedding_dimension}")
+            logger.info("Local embedding model loaded. Dimension: %s", self.embedding_dimension)
         except Exception as e:
-            logger.error(f"Failed to load embedding model: {e}")
+            logger.error(f"Failed to load local embedding model: {e}")
             raise
+
+    def _generate_hf_embedding(self, text: str) -> np.ndarray:
+        """
+        Generate embedding using Hugging Face Inference API.
+        Supports both [dim] and [tokens][dim] style responses.
+        """
+        endpoint = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{self.model_name}"
+        headers = {"Authorization": f"Bearer {self.hf_api_key}"}
+        payload = {"inputs": text, "options": {"wait_for_model": True}}
+
+        try:
+            response = requests.post(endpoint, headers=headers, json=payload, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            # Cases:
+            # 1) Flat vector: [0.1, ...]
+            # 2) Token vectors: [[...], [...], ...]
+            if isinstance(data, list) and data and isinstance(data[0], (float, int)):
+                vector = np.asarray(data, dtype=np.float32)
+            elif isinstance(data, list) and data and isinstance(data[0], list):
+                token_matrix = np.asarray(data, dtype=np.float32)
+                # Mean pooling across token dimension.
+                vector = token_matrix.mean(axis=0)
+            else:
+                logger.warning("Unexpected HF embedding response shape; returning zeros")
+                return np.zeros(self.embedding_dimension, dtype=np.float32)
+
+            if vector.ndim != 1:
+                vector = vector.reshape(-1)
+            norm = np.linalg.norm(vector)
+            if norm > 0:
+                vector = vector / norm
+            self.embedding_dimension = int(vector.shape[0])
+            return vector
+        except Exception as e:
+            logger.error("HF inference embedding failed: %s", e)
+            return np.zeros(self.embedding_dimension, dtype=np.float32)
     
     def generate_embedding(self, text: str) -> np.ndarray:
         """
@@ -55,7 +117,11 @@ class EmbeddingGenerator:
             return np.zeros(self.embedding_dimension)
         
         try:
-            embedding = self.model.encode(text, normalize_embeddings=True)
+            if self.backend == 'hf_inference':
+                embedding = self._generate_hf_embedding(text)
+            else:
+                self._init_local_model()
+                embedding = self.model.encode(text, normalize_embeddings=True)
             return embedding
         except Exception as e:
             logger.error(f"Error generating embedding: {e}")
@@ -79,6 +145,10 @@ class EmbeddingGenerator:
         valid_texts = [text if text and text.strip() else "" for text in texts]
         
         try:
+            if self.backend == 'hf_inference':
+                embeddings = [self._generate_hf_embedding(text) for text in valid_texts]
+                return np.array(embeddings)
+            self._init_local_model()
             embeddings = self.model.encode(
                 valid_texts,
                 batch_size=batch_size,
@@ -184,7 +254,6 @@ if __name__ == "__main__":
     print(f"Generated {len(embeddings)} embeddings")
     print(f"Embedding dimension: {len(embeddings[0])}")
     print(f"Sample text: {texts[0][:100]}...")
-
 
 
 
