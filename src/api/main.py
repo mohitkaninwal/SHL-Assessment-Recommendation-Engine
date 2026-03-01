@@ -7,7 +7,7 @@ import sys
 import logging
 import asyncio
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, status
@@ -19,8 +19,10 @@ import uvicorn
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.recommendation.recommend import RecommendationEngine
 from src.recommendation.query_guardrails import QueryGuardrails
+
+if TYPE_CHECKING:
+    from src.recommendation.recommend import RecommendationEngine
 
 # Configure logging
 logging.basicConfig(
@@ -48,7 +50,7 @@ app.add_middleware(
 )
 
 # Global recommendation engine instance
-recommendation_engine: Optional[RecommendationEngine] = None
+recommendation_engine: Optional["RecommendationEngine"] = None
 engine_init_lock = asyncio.Lock()
 
 
@@ -134,7 +136,7 @@ async def startup_event():
     logger.info("Starting SHL Assessment Recommendation API...")
 
 
-async def get_or_init_engine() -> Optional[RecommendationEngine]:
+async def get_or_init_engine() -> Optional["RecommendationEngine"]:
     """Initialize recommendation engine once, lazily, to reduce cold-start memory spikes."""
     global recommendation_engine
     if recommendation_engine is not None:
@@ -144,6 +146,9 @@ async def get_or_init_engine() -> Optional[RecommendationEngine]:
         if recommendation_engine is not None:
             return recommendation_engine
         try:
+            # Lazy import keeps API /health up even if recommendation deps are misconfigured.
+            from src.recommendation.recommend import RecommendationEngine
+
             logger.info("Initializing recommendation engine (lazy)...")
             recommendation_engine = RecommendationEngine(
                 use_rag=True,
