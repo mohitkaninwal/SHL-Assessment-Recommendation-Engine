@@ -206,7 +206,9 @@ def process_scraped_data(
     input_path: str,
     output_path: str,
     validate_urls: bool = False,
-    url_sample_size: Optional[int] = 10
+    url_sample_size: Optional[int] = 10,
+    backup_raw: bool = True,
+    backup_dir: str = "data/backups"
 ) -> AssessmentCatalog:
     """
     Process scraped data: load, clean, and save
@@ -216,12 +218,26 @@ def process_scraped_data(
         output_path: Path to save processed data
         validate_urls: Whether to validate URLs
         url_sample_size: Number of URLs to validate (None = all)
+        backup_raw: Whether to create timestamped backup of raw input file
+        backup_dir: Directory where raw backups are stored
         
     Returns:
         Processed AssessmentCatalog
     """
     logger.info(f"Loading scraped data from {input_path}")
     
+    # Backup raw data before any processing to preserve source of truth
+    if backup_raw:
+        backup_root = Path(backup_dir)
+        backup_root.mkdir(parents=True, exist_ok=True)
+        timestamp = Path(input_path).stat().st_mtime
+        from datetime import datetime
+        stamp = datetime.fromtimestamp(timestamp).strftime("%Y%m%d_%H%M%S")
+        backup_path = backup_root / f"{Path(input_path).stem}_{stamp}.json"
+        with open(input_path, 'r', encoding='utf-8') as src, open(backup_path, 'w', encoding='utf-8') as dst:
+            dst.write(src.read())
+        logger.info(f"Created raw data backup at {backup_path}")
+
     # Load raw data
     with open(input_path, 'r', encoding='utf-8') as f:
         raw_data = json.load(f)
@@ -285,4 +301,3 @@ if __name__ == "__main__":
     
     catalog = process_scraped_data(input_file, output_file, validate_urls=True)
     print(f"\nProcessed {len(catalog)} assessments")
-

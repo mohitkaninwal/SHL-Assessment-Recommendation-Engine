@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Run both API and Frontend together
+Run both API and React frontend together
 """
 
 import os
@@ -36,7 +36,8 @@ def main():
     
     # Get configuration
     api_port = os.getenv("API_PORT", "8000")
-    frontend_port = os.getenv("STREAMLIT_SERVER_PORT", "8501")
+    frontend_port = os.getenv("FRONTEND_PORT", "8501")
+    api_base_url = os.getenv("API_BASE_URL", f"http://localhost:{api_port}")
     
     print(f"\nAPI URL: http://localhost:{api_port}")
     print(f"Frontend URL: http://localhost:{frontend_port}")
@@ -71,16 +72,23 @@ def main():
     # Start Frontend
     print("\n[2/2] Starting frontend...")
     frontend_dir = Path(__file__).parent.parent / "frontend"
-    app_file = frontend_dir / "app.py"
-    
+    frontend_env = os.environ.copy()
+    frontend_env["VITE_API_BASE_URL"] = api_base_url
+
+    # Ensure frontend dependencies are installed
+    try:
+        subprocess.run(["npm", "install"], cwd=frontend_dir, check=True, env=frontend_env)
+    except Exception:
+        print("⚠ Could not install frontend dependencies")
+
     frontend_process = subprocess.Popen(
         [
-            "streamlit", "run",
-            str(app_file),
-            "--server.port", frontend_port,
-            "--server.address", "0.0.0.0",
-            "--browser.gatherUsageStats", "false"
+            "npm", "run", "dev", "--",
+            "--host", "0.0.0.0",
+            "--port", frontend_port
         ],
+        cwd=str(frontend_dir),
+        env=frontend_env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         universal_newlines=True

@@ -4,7 +4,7 @@ Defines the structure and validation for assessment data
 """
 
 from typing import Optional, List, Dict, Tuple
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, fields
 from datetime import datetime
 import json
 
@@ -41,7 +41,9 @@ class Assessment:
     @classmethod
     def from_dict(cls, data: Dict) -> 'Assessment':
         """Create Assessment from dictionary"""
-        return cls(**data)
+        allowed = {field.name for field in fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in allowed}
+        return cls(**filtered)
     
     def validate(self) -> Tuple[bool, List[str]]:
         """
@@ -196,4 +198,3 @@ class AssessmentCatalog:
     def __repr__(self) -> str:
         """String representation"""
         return f"AssessmentCatalog(count={len(self.assessments)}, metadata={self.metadata})"
-

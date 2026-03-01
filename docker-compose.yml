@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    command: python scripts/run_api.py
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: .
+    command: python scripts/run_frontend.py
+    env_file:
+      - .env
+    environment:
+      - API_BASE_URL=http://api:8000
+      - STREAMLIT_SERVER_PORT=8501
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api

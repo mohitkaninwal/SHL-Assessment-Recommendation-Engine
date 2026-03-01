@@ -122,12 +122,13 @@ class VectorDB:
             vector_id = self._create_vector_id(assessment, idx)
             
             # Prepare metadata
+            description = assessment.get('description') or ''
             metadata = {
-                'name': assessment.get('name', ''),
-                'url': assessment.get('url', ''),
-                'test_type': assessment.get('test_type', ''),
-                'description': assessment.get('description', '')[:1000],  # Limit metadata size
-                'category': assessment.get('category', '')
+                'name': assessment.get('name') or '',
+                'url': assessment.get('url') or '',
+                'test_type': assessment.get('test_type') or '',
+                'description': description[:1000],  # Limit metadata size
+                'category': assessment.get('category') or ''
             }
             
             # Remove empty metadata fields
@@ -264,7 +265,6 @@ if __name__ == "__main__":
         print("Note: Requires PINECONE_API_KEY environment variable")
     except Exception as e:
         print(f"Error: {e}")
-
 
 
 

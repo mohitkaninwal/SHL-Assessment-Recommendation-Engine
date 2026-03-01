@@ -9,6 +9,7 @@ import pandas as pd
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from .metrics import mean_recall_at_k, calculate_metrics, calculate_per_query_metrics
+from .url_utils import canonicalize_url_lists, unique_url_overlap
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -171,12 +172,20 @@ class Evaluator:
                     'error': str(e)
                 })
         
+        # Canonicalize URLs before scoring to avoid false negatives from known
+        # equivalent URL variants in dataset/catalog.
+        canonical_predictions = canonicalize_url_lists(predictions)
+        canonical_ground_truth = canonicalize_url_lists(ground_truth)
+        unique_pred, unique_gt, unique_overlap = unique_url_overlap(
+            canonical_predictions, canonical_ground_truth
+        )
+
         # Calculate metrics
-        metrics = calculate_metrics(predictions, ground_truth, k_values=[5, 10])
+        metrics = calculate_metrics(canonical_predictions, canonical_ground_truth, k_values=[5, 10])
         
         # Calculate per-query metrics
         per_query_metrics = calculate_per_query_metrics(
-            predictions, ground_truth, queries, k=10
+            canonical_predictions, canonical_ground_truth, queries, k=10
         )
         
         # Compile results
@@ -189,6 +198,12 @@ class Evaluator:
                 'mean_recall@10': metrics.get('mean_recall@10', 0.0),
                 'mean_precision@10': metrics.get('mean_precision@10', 0.0),
                 'f1@10': metrics.get('f1@10', 0.0)
+            },
+            'url_normalization': {
+                'enabled': True,
+                'unique_predicted_urls': unique_pred,
+                'unique_ground_truth_urls': unique_gt,
+                'unique_overlap_urls': unique_overlap
             }
         }
         
@@ -207,6 +222,11 @@ class Evaluator:
         logger.info(f"Mean Recall@5: {metrics.get('mean_recall@5', 0.0):.4f}")
         logger.info(f"Mean Precision@10: {metrics.get('mean_precision@10', 0.0):.4f}")
         logger.info(f"F1@10: {metrics.get('f1@10', 0.0):.4f}")
+        logger.info(
+            "URL normalization overlap: %d/%d unique GT URLs",
+            unique_overlap,
+            unique_gt,
+        )
         logger.info("=" * 60)
         
         return results

@@ -35,6 +35,7 @@ class QueryPreprocessor:
         
         # Remove special characters that might interfere (keep alphanumeric, spaces, common punctuation)
         query = re.sub(r'[^\w\s\-.,!?]', ' ', query)
+        query = ' '.join(query.split())
         
         # Normalize to lowercase (optional - depends on embedding model)
         # Some models work better with original case, so we'll keep it
@@ -250,7 +251,6 @@ def create_retriever(vector_db: VectorDB, embedding_model: Optional[str] = None)
 if __name__ == "__main__":
     print("Retriever module loaded successfully")
     print("Note: Requires initialized VectorDB and EmbeddingGenerator")
-
 
 
 

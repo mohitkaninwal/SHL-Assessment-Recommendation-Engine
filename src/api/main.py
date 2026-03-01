@@ -19,6 +19,7 @@ import uvicorn
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.recommendation.recommend import RecommendationEngine
+from src.recommendation.query_guardrails import QueryGuardrails
 
 # Configure logging
 logging.basicConfig(
@@ -249,6 +250,15 @@ async def get_recommendations(request: RecommendationRequest):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Recommendation engine is not available. Please try again later."
+        )
+
+    # Guardrail: block unclear/nonsensical prompts before LLM invocation.
+    validation = QueryGuardrails.validate(request.query)
+    if not validation.is_valid:
+        logger.warning("Rejected unclear query via guardrails: '%s'", request.query[:80])
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=validation.message
         )
     
     try:

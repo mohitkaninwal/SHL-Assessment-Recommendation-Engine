@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Run the Streamlit frontend
+Run the React frontend (Vite)
 """
 
 import os
@@ -9,39 +9,39 @@ import subprocess
 from pathlib import Path
 
 def main():
-    """Run Streamlit app"""
+    """Run React app"""
     
     # Get frontend directory
     frontend_dir = Path(__file__).parent.parent / "frontend"
-    app_file = frontend_dir / "app.py"
-    
-    if not app_file.exists():
-        print(f"Error: Frontend app not found at {app_file}")
+    package_file = frontend_dir / "package.json"
+
+    if not package_file.exists():
+        print(f"Error: Frontend package.json not found at {package_file}")
         return 1
     
     # Get configuration from environment
-    port = os.getenv("STREAMLIT_SERVER_PORT", "8501")
+    port = os.getenv("FRONTEND_PORT", "8501")
+    api_base_url = os.getenv("API_BASE_URL", "http://localhost:8000")
+    frontend_env = os.environ.copy()
+    frontend_env["VITE_API_BASE_URL"] = api_base_url
     
     print("=" * 80)
-    print("Starting SHL Assessment Recommender Frontend")
+    print("Starting SHL Assessment Recommender Frontend (React)")
     print("=" * 80)
     print(f"Frontend URL: http://localhost:{port}")
-    print(f"API URL: {os.getenv('API_BASE_URL', 'http://localhost:8000')}")
+    print(f"API URL: {api_base_url}")
     print("=" * 80)
     print("\nMake sure the API is running:")
     print("  python scripts/run_api.py")
     print("\nPress Ctrl+C to stop the frontend")
     print("=" * 80)
     
-    # Run streamlit
+    # Install dependencies if needed, then run Vite dev server.
     try:
+        subprocess.run(["npm", "install"], cwd=frontend_dir, check=True, env=frontend_env)
         subprocess.run([
-            "streamlit", "run",
-            str(app_file),
-            "--server.port", port,
-            "--server.address", "0.0.0.0",
-            "--browser.gatherUsageStats", "false"
-        ])
+            "npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", port
+        ], cwd=frontend_dir, check=True, env=frontend_env)
     except KeyboardInterrupt:
         print("\n\nShutting down frontend...")
     except Exception as e:

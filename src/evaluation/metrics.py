@@ -161,7 +161,7 @@ def calculate_per_query_metrics(
     Returns:
         List of dictionaries with per-query metrics
     """
-    if len(predictions) != len(ground_truth) != len(query_texts):
+    if len(predictions) != len(ground_truth) or len(predictions) != len(query_texts):
         raise ValueError("Length mismatch between predictions, ground truth, and queries")
     
     per_query_results = []
@@ -179,8 +179,8 @@ def calculate_per_query_metrics(
         result = {
             'query_index': i,
             'query': query,
-            'recall@10': recall,
-            'precision@10': precision,
+            f'recall@{k}': recall,
+            f'precision@{k}': precision,
             'relevant_found': relevant_in_top_k,
             'total_relevant': total_relevant,
             'predicted_count': len(pred_urls[:k])

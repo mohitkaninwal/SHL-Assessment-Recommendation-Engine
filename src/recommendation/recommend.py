@@ -13,6 +13,7 @@ from .vector_db import VectorDB
 from .retriever import AssessmentRetriever
 from .llm_client import LLMClient
 from .rag_pipeline import RAGPipeline, create_rag_pipeline
+from .query_guardrails import QueryGuardrails
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -81,6 +82,12 @@ class RecommendationEngine:
         Returns:
             Recommendation results
         """
+        validation = QueryGuardrails.validate(query)
+        if not validation.is_valid:
+            raise ValueError(validation.message)
+
+        query = validation.normalized_query
+
         if self.use_rag:
             return self.pipeline.recommend(
                 query=query,

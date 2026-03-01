@@ -61,6 +61,17 @@ def main():
         default=10,
         help='Number of URLs to validate (default: 10, use 0 for all)'
     )
+    parser.add_argument(
+        '--no-backup-raw',
+        action='store_true',
+        help='Disable timestamped backup of raw data before processing'
+    )
+    parser.add_argument(
+        '--backup-dir',
+        type=str,
+        default='data/backups',
+        help='Directory for raw-data backups (default: data/backups)'
+    )
     
     args = parser.parse_args()
     
@@ -98,7 +109,9 @@ def main():
                 input_path=args.raw_data,
                 output_path=args.processed_data,
                 validate_urls=args.validate_urls,
-                url_sample_size=url_sample
+                url_sample_size=url_sample,
+                backup_raw=not args.no_backup_raw,
+                backup_dir=args.backup_dir
             )
             
             logger.info(f"✓ Processed {len(catalog)} assessments")
@@ -158,4 +171,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
