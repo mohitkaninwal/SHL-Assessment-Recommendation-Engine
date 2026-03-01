@@ -8,8 +8,8 @@ services:
     envVars:
       - key: API_HOST
         value: 0.0.0.0
-      - key: API_PORT
-        value: 8000
+      - key: API_RELOAD
+        value: false
       - key: EMBEDDING_BACKEND
         value: hf_inference
       - key: EMBEDDING_DIMENSION
