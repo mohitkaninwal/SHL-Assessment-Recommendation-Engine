@@ -26,24 +26,33 @@ def check_catalog(catalog_path: Path) -> Tuple[bool, dict]:
     }
 
 
+# Accepted CSV header variants (assignment may use Query/Assessment_url or query/assessment_url)
+REQUIRED_HEADER_VARIANTS = (
+    ["query", "assessment_url"],
+    ["Query", "Assessment_url"],
+)
+
+
 def check_predictions_csv(predictions_path: Path) -> Tuple[bool, dict]:
     if not predictions_path.exists():
         return False, {"error": f"Predictions file not found: {predictions_path}"}
 
     with predictions_path.open("r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        headers = reader.fieldnames or []
+        headers = [h.strip() for h in (reader.fieldnames or [])]
         rows: List[dict] = list(reader)
 
-    required_headers = ["query", "assessment_url"]
-    if headers != required_headers:
+    if headers not in REQUIRED_HEADER_VARIANTS:
         return False, {
             "error": "CSV headers do not match required format",
             "found_headers": headers,
-            "required_headers": required_headers,
+            "required_headers": "one of: query/assessment_url or Query/Assessment_url",
         }
 
-    missing_rows = [i + 2 for i, row in enumerate(rows) if not row.get("query") or not row.get("assessment_url")]
+    # Normalize keys for validation (accept either casing)
+    q_key = "Query" if "Query" in headers else "query"
+    a_key = "Assessment_url" if "Assessment_url" in headers else "assessment_url"
+    missing_rows = [i + 2 for i, row in enumerate(rows) if not (row.get(q_key) or "").strip() or not (row.get(a_key) or "").strip()]
     if missing_rows:
         return False, {
             "error": "Some rows have missing query or assessment_url",

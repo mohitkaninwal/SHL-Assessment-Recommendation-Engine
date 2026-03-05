@@ -5,6 +5,7 @@ Handles cleaning, normalization, and validation of scraped data
 
 import logging
 import json
+import re
 from typing import List, Dict, Optional
 from pathlib import Path
 import requests
@@ -105,6 +106,28 @@ class DataProcessor:
                 description = ' '.join(description.split())
                 self.cleaning_stats['descriptions_cleaned'] += 1
         
+        # Normalize yes/no fields
+        def _to_yes_no(value: Optional[str]) -> Optional[str]:
+            if value is None:
+                return None
+            value_str = str(value).strip().lower()
+            if value_str in {'yes', 'y', 'true', '1'}:
+                return 'Yes'
+            if value_str in {'no', 'n', 'false', '0'}:
+                return 'No'
+            return None
+        
+        remote_support = _to_yes_no(assessment.remote_support)
+        adaptive_support = _to_yes_no(assessment.adaptive_support)
+        
+        duration = None
+        if assessment.duration is not None:
+            try:
+                duration = int(assessment.duration)
+            except (TypeError, ValueError):
+                match = re.search(r'\d+', str(assessment.duration))
+                duration = int(match.group(0)) if match else None
+        
         # Normalize test_type
         test_type = None
         if assessment.test_type:
@@ -121,7 +144,11 @@ class DataProcessor:
             name=name,
             url=url,
             test_type=test_type,
+            all_test_types=assessment.all_test_types,
             description=description,
+            duration=duration,
+            remote_support=remote_support,
+            adaptive_support=adaptive_support,
             category=assessment.category,
             metadata=assessment.metadata
         )

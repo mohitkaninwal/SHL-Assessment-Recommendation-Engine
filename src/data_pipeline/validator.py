@@ -4,6 +4,7 @@ Validates scraped data meets requirements
 """
 
 import logging
+import re
 from typing import Dict, List, Tuple
 from .schema import AssessmentCatalog
 
@@ -170,13 +171,12 @@ class DataValidator:
         Returns:
             Dictionary with validation result
         """
-        excluded_keywords = [
-            'pre-packaged',
-            'prepackaged',
-            'job solution',
-            'package',
-            'suite',
-            'bundle'
+        # Use strict phrase patterns to avoid false positives such as
+        # "Technical Checking - Next Generation" matching broad substrings.
+        excluded_patterns = [
+            r'\bpre[-\s]?packaged\b',
+            r'\bjob\s+solutions?\b',
+            r'\bpre[-\s]?packaged\s+job\s+solutions?\b',
         ]
         
         excluded_assessments = []
@@ -185,7 +185,8 @@ class DataValidator:
             name = (assessment.name or '').lower()
             description = (assessment.description or '').lower()
             
-            if any(keyword in name or keyword in description for keyword in excluded_keywords):
+            combined_text = f"{name} {description}"
+            if any(re.search(pattern, combined_text) for pattern in excluded_patterns):
                 excluded_assessments.append({
                     'index': idx,
                     'name': assessment.name,
@@ -259,8 +260,6 @@ if __name__ == "__main__":
     catalog_path = sys.argv[1] if len(sys.argv) > 1 else "data/processed_catalog.json"
     is_valid = validate_catalog(catalog_path)
     sys.exit(0 if is_valid else 1)
-
-
 
 
 

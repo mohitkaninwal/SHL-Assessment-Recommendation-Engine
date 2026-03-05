@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 
 const defaultApiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+const MAX_QUERY_LENGTH = 5000
 
 const quickPrompts = [
   'Recommend assessments for Java developers with collaboration skills.',
@@ -129,6 +130,9 @@ export default function App() {
   }
 
   const healthStatus = healthInfo?.status === 'healthy' && healthInfo?.engine_status === 'healthy'
+  const recommendedAssessments = recommendationInfo?.recommended_assessments
+    || recommendationInfo?.recommendations
+    || []
 
   return (
     <main className="screen">
@@ -148,7 +152,7 @@ export default function App() {
               SHL Assessment
             </h1>
             <h2>Recommendation Assistant</h2>
-            <p>Paste a job description or pick a prompt to get relevant SHL test recommendations.</p>
+            <p>Enter a natural language query, paste JD text, or provide a JD URL to get relevant SHL test recommendations.</p>
           </header>
 
           <section className="prompt-grid">
@@ -174,8 +178,8 @@ export default function App() {
               <textarea
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Enter hiring requirement or job description..."
-                maxLength={1000}
+                placeholder="Enter a query, paste JD text, or paste a JD URL..."
+                maxLength={MAX_QUERY_LENGTH}
                 required
               />
 
@@ -189,7 +193,7 @@ export default function App() {
                 <button type="button" className="ghost" onClick={() => setQuery(quickPrompts[Math.floor(Math.random() * quickPrompts.length)])} disabled={recommendLoading}>↺ Random Prompt</button>
               </div>
               <div className="right-actions">
-                <span>{query.length}/1000</span>
+                <span>{query.length}/{MAX_QUERY_LENGTH}</span>
                 <button type="submit" className="send" disabled={recommendLoading}>{recommendLoading ? '…' : '➜'}</button>
               </div>
             </div>
@@ -259,37 +263,54 @@ export default function App() {
 
           {recommendationInfo && (
             <section className="results">
-              <h3>Recommendations ({recommendationInfo.returned})</h3>
-              <p className="status-line">
-                Total retrieved from backend: <strong>{recommendationInfo.total_found ?? 0}</strong>
-              </p>
-              {Number(recommendationInfo.returned || 0) === 0 && (
+              <h3>Recommendations ({recommendedAssessments.length})</h3>
+              {Number(recommendedAssessments.length || 0) === 0 && (
                 <p className="error-box">
                   No assessments were returned for this query. Try another query or disable balanced skill filtering in Developer Controls.
                 </p>
               )}
-              <table>
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Assessment</th>
-                    <th>Type</th>
-                    <th>Score</th>
-                    <th>URL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recommendationInfo.recommendations.map((item, index) => (
-                    <tr key={`${item.assessment_url}-${index}`}>
-                      <td>{index + 1}</td>
-                      <td>{item.assessment_name}</td>
-                      <td>{item.test_type}</td>
-                      <td>{Number(item.similarity_score).toFixed(3)}</td>
-                      <td><a href={item.assessment_url} target="_blank" rel="noreferrer">open</a></td>
+              <div className="results-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Assessment Name</th>
+                      <th>URL</th>
+                      <th>Test Type</th>
+                      <th>Duration (mins)</th>
+                      <th>Remote Support</th>
+                      <th>Adaptive Support</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {recommendedAssessments.map((item, index) => {
+                      const assessmentUrl = item.url || item.assessment_url
+                      const assessmentName = item.name || item.assessment_name
+                      const testType = Array.isArray(item.test_type) ? item.test_type.join(', ') : item.test_type
+
+                      return (
+                        <tr key={`${assessmentUrl}-${index}`}>
+                          <td>{index + 1}</td>
+                          <td>{assessmentName || 'NA'}</td>
+                          <td>
+                            {assessmentUrl ? (
+                              <a href={assessmentUrl} target="_blank" rel="noreferrer">
+                                {assessmentUrl}
+                              </a>
+                            ) : (
+                              'NA'
+                            )}
+                          </td>
+                          <td>{testType || 'NA'}</td>
+                          <td>{item.duration ?? 'NA'}</td>
+                          <td>{item.remote_support || 'NA'}</td>
+                          <td>{item.adaptive_support || 'NA'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </section>
           )}
         </div>

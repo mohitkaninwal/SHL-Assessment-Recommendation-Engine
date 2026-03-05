@@ -1,0 +1,66 @@
+{
+  "checks": {
+    "catalog_validation": {
+      "passed": true,
+      "details": {
+        "count": 377,
+        "validation": {
+          "count_check": {
+            "passed": true,
+            "count": 377,
+            "required": 377,
+            "message": "Found 377 assessments (required: \u2265377)"
+          },
+          "duplicate_check": {
+            "passed": true,
+            "duplicate_count": 0,
+            "duplicate_pairs": [],
+            "message": "Found 0 duplicate pairs"
+          },
+          "required_fields_check": {
+            "passed": true,
+            "missing_name_count": 0,
+            "missing_url_count": 0,
+            "missing_fields": {
+              "name": [],
+              "url": []
+            },
+            "message": "Found 0 assessments with missing required fields"
+          },
+          "url_format_check": {
+            "passed": true,
+            "invalid_count": 0,
+            "invalid_urls": [],
+            "message": "Found 0 invalid URL formats"
+          },
+          "individual_tests_only": {
+            "passed": true,
+            "excluded_count": 0,
+            "excluded_assessments": [],
+            "message": "Found 0 excluded assessments"
+          },
+          "overall_valid": true
+        }
+      }
+    },
+    "predictions_csv": {
+      "passed": true,
+      "details": {
+        "rows": 90,
+        "headers": [
+          "Query",
+          "Assessment_url"
+        ]
+      }
+    },
+    "deployment_urls": {
+      "passed": false,
+      "details": "Manual check required: verify public API/frontend URLs from external network."
+    },
+    "approach_pdf": {
+      "passed": false,
+      "details": "Manual check required: export docs/APPROACH_DOCUMENT.md to 2-page PDF."
+    }
+  },
+  "overall_ready": true
+}

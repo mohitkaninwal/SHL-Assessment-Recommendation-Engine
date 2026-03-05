@@ -38,3 +38,9 @@ def test_guardrails_reject_personal_non_domain_input():
     result = QueryGuardrails.validate(query)
     assert result.is_valid is False
     assert "Please provide a valid prompt or instruction" in result.message
+
+
+def test_guardrails_accept_concise_domain_jd():
+    query = "Content Writer required, expert in English and SEO."
+    result = QueryGuardrails.validate(query)
+    assert result.is_valid is True

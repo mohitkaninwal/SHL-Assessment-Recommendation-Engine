@@ -1,684 +1,484 @@
-"""
-Web Scraper for SHL Product Catalog
-Extracts Individual Test Solutions from https://www.shl.com/products/product-catalog/?type=1
+"""Web scraper for SHL Individual Test Solutions catalog (type=1)."""
 
-CRITICAL: Uses type=1 URL parameter to get ONLY Individual Test Solutions
-- type=1 = Individual Test Solutions ✓
-- type=2 = Pre-packaged Job Solutions ✗
+from __future__ import annotations
 
-Best Practices Implementation:
-- Next button clicks (not direct URL navigation)
-- Session rotation (restart browser every N pages)
-- Human-like behavior (scrolling, random delays)
-- Stealth mode to avoid detection
-- Debug HTML saving for failed pages
-"""
-
-import time
-import random
 import json
 import logging
-import re
 import os
-from typing import List, Dict, Optional, Tuple
+import random
+import re
+import time
 from datetime import datetime
-from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Tuple
+from urllib.parse import urlencode
+
 import requests
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.action_chains import ActionChains
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class SHLScraper:
-    """Advanced Scraper for SHL Assessment Catalog with Anti-Bot Evasion"""
-    
-    def __init__(self, use_selenium: bool = True, headless: bool = True, session_rotation_interval: int = 5):
+    """Requests-first scraper for SHL Assessment catalog."""
+
+    def __init__(
+        self,
+        use_selenium: bool = True,
+        headless: bool = True,
+        session_rotation_interval: int = 5,
+    ):
+        """Initialize scraper.
+
+        Notes:
+        - `use_selenium`, `headless`, and `session_rotation_interval` are kept for
+          backward compatibility with existing CLI arguments.
+        - Scraping now runs fully with requests + BeautifulSoup.
         """
-        Initialize the scraper
-        
-        Args:
-            use_selenium: Whether to use Selenium for dynamic content
-            headless: Run browser in headless mode
-            session_rotation_interval: Restart browser every N pages (default: 5)
-        """
-        self.base_url = "https://www.shl.com/products/product-catalog/?type=1"  # type=1 for Individual Test Solutions
+        self.base_url = "https://www.shl.com/products/product-catalog/"
+        self.catalog_type = "1"  # Individual Test Solutions
+        self.page_size = 12
+        self.max_pages = 80
         self.use_selenium = use_selenium
-        self.driver = None
         self.headless = headless
         self.session_rotation_interval = session_rotation_interval
-        self.current_page = 1
-        self.debug_dir = Path("data/debug_html")
-        self.debug_dir.mkdir(parents=True, exist_ok=True)
-        
+        self.timeout = 25
+
+        self.user_agents = [
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        ]
+
         self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        })
-        
+        self.session.headers.update(
+            {
+                "User-Agent": random.choice(self.user_agents),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Connection": "keep-alive",
+                "Referer": "https://www.shl.com/",
+            }
+        )
+
         if use_selenium:
-            self._setup_selenium(headless)
-    
-    def _setup_selenium(self, headless: bool = True):
-        """Setup Selenium WebDriver with stealth options"""
-        try:
-            chrome_options = Options()
-            
-            # Stealth options to avoid detection
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            chrome_options.add_experimental_option('useAutomationExtension', False)
-            
-            # Realistic user agent
-            chrome_options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-            
-            # Window size (even in headless)
-            chrome_options.add_argument('--window-size=1920,1080')
-            
-            if headless:
-                chrome_options.add_argument('--headless=new')  # New headless mode
-            
-            self.driver = webdriver.Chrome(options=chrome_options)
-            
-            # Execute stealth script to hide webdriver property
-            self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-                'source': '''
-                    Object.defineProperty(navigator, 'webdriver', {
-                        get: () => undefined
-                    });
-                '''
-            })
-            
-            logger.info("Selenium WebDriver initialized with stealth mode")
-        except Exception as e:
-            logger.error(f"Failed to initialize Selenium: {e}")
-            raise
-    
-    def _restart_browser(self):
-        """Restart browser to get fresh session"""
-        logger.info("Restarting browser for fresh session...")
-        if self.driver:
+            logger.info("Selenium mode requested but disabled: scraper now uses requests-only implementation")
+
+    def _catalog_page_url(self, start: int) -> str:
+        params = {"type": self.catalog_type}
+        if start > 0:
+            params["start"] = str(start)
+        return f"{self.base_url}?{urlencode(params)}"
+
+    def _is_blocked_or_error_page(self, html: str) -> bool:
+        text = html.lower()
+        if not text:
+            return True
+
+        # Positive signatures for the real catalog page; if present, don't treat as blocked.
+        if (
+            "talent assessments catalog" in text
+            or "product-catalogue__table" in text
+            or "/products/product-catalog/view/" in text
+        ):
+            return False
+
+        # Strong signatures from SHL error/blocked templates.
+        block_markers = [
+            "<title>server error",
+            "ss-errorpage",
+            "request blocked",
+            "we'll try to fix this soon",
+            "error 403",
+            "access denied",
+            "cf-chl-bypass",
+        ]
+        return any(marker in text for marker in block_markers)
+
+    def _fetch_html(self, url: str, *, max_retries: int = 5) -> Optional[str]:
+        for attempt in range(1, max_retries + 1):
             try:
-                self.driver.quit()
-            except:
-                pass
-        time.sleep(random.uniform(2, 4))
-        self._setup_selenium(self.headless)
-        logger.info("Browser restarted successfully")
-    
-    def _human_like_delay(self, min_seconds: float = 2.0, max_seconds: float = 5.0):
-        """Random delay to simulate human behavior"""
-        delay = random.uniform(min_seconds, max_seconds)
+                response = self.session.get(url, timeout=self.timeout)
+                status = response.status_code
+
+                if status in {403, 429, 500, 502, 503, 504}:
+                    logger.warning("Fetch %s returned status %s (attempt %s/%s)", url, status, attempt, max_retries)
+                    self._backoff(attempt)
+                    self._rotate_user_agent()
+                    continue
+
+                if status >= 400:
+                    logger.warning("Fetch %s failed with status %s", url, status)
+                    return None
+
+                html = response.text or ""
+                if len(html) < 800 or self._is_blocked_or_error_page(html):
+                    logger.warning("Fetch %s returned blocked/error content (attempt %s/%s)", url, attempt, max_retries)
+                    self._backoff(attempt)
+                    self._rotate_user_agent()
+                    continue
+
+                return html
+            except requests.RequestException as exc:
+                logger.warning("Fetch %s failed on attempt %s/%s: %s", url, attempt, max_retries, exc)
+                self._backoff(attempt)
+                self._rotate_user_agent()
+
+        logger.error("Giving up fetch after %s attempts: %s", max_retries, url)
+        return None
+
+    def _backoff(self, attempt: int) -> None:
+        # Short exponential backoff with jitter.
+        base = min(2**attempt, 12)
+        delay = base + random.uniform(0.2, 1.5)
         time.sleep(delay)
-    
-    def _human_like_scroll(self):
-        """Simulate human-like scrolling behavior"""
-        if not self.driver:
-            return
-        
-        try:
-            # Scroll down gradually
-            scroll_pause = random.uniform(0.5, 1.5)
-            for i in range(random.randint(2, 4)):
-                scroll_amount = random.randint(300, 600)
-                self.driver.execute_script(f"window.scrollBy(0, {scroll_amount});")
-                time.sleep(scroll_pause)
-            
-            # Sometimes scroll back up a bit
-            if random.random() < 0.3:
-                self.driver.execute_script("window.scrollBy(0, -200);")
-                time.sleep(random.uniform(0.3, 0.8))
-        except Exception as e:
-            logger.debug(f"Error during scrolling: {e}")
-    
-    def _dismiss_cookie_banner(self):
-        """Dismiss cookie consent banner if present"""
-        if not self.use_selenium or not self.driver:
-            return
-        
-        try:
-            self._human_like_delay(1.5, 3.0)
-            
-            strategies = [
-                lambda: self.driver.find_element(By.ID, "CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll"),
-                lambda: self.driver.find_element(By.XPATH, 
-                    "//button[contains(text(), 'Accept') or contains(text(), 'I understand') or contains(text(), 'Continue')]"),
-                lambda: self.driver.find_element(By.CSS_SELECTOR, 
-                    "#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll, .cookie-accept, .accept-cookies"),
-            ]
-            
-            for strategy in strategies:
-                try:
-                    button = strategy()
-                    if button.is_displayed():
-                        # Scroll to button first
-                        self.driver.execute_script("arguments[0].scrollIntoView(true);", button)
-                        self._human_like_delay(0.5, 1.0)
-                        button.click()
-                        self._human_like_delay(1.0, 2.0)
-                        logger.debug("Cookie banner dismissed")
-                        return
-                except NoSuchElementException:
-                    continue
-            
-            # Fallback: Hide with JavaScript
-            try:
-                self.driver.execute_script("""
-                    var banner = document.getElementById('CybotCookiebotDialogHeader');
-                    if (banner) banner.style.display = 'none';
-                    var overlay = document.getElementById('CybotCookiebotDialog');
-                    if (overlay) overlay.style.display = 'none';
-                """)
-            except:
-                pass
-                
-        except Exception as e:
-            logger.debug(f"Could not dismiss cookie banner: {e}")
-    
-    def _load_initial_page(self) -> bool:
-        """Load the initial catalog page"""
-        try:
-            logger.info(f"Loading initial page: {self.base_url}")
-            self.driver.get(self.base_url)
-            self._human_like_delay(3, 5)
-            
-            # Dismiss cookie banner
-            self._dismiss_cookie_banner()
-            
-            # Human-like scroll
-            self._human_like_scroll()
-            
-            # Simulate reading the page
-            self._human_like_delay(2.0, 4.0)
-            
-            # Wait for table
-            try:
-                WebDriverWait(self.driver, 15).until(
-                    EC.presence_of_element_located((By.TAG_NAME, "table"))
-                )
-            except TimeoutException:
-                logger.warning("Table not found within timeout")
-            
-            return True
-        except Exception as e:
-            logger.error(f"Error loading initial page: {e}")
-            return False
-    
-    def _click_next_button(self) -> bool:
-        """Click the Next pagination button (human-like)"""
-        if not self.driver:
-            return False
-        
-        try:
-            # Find Next button with multiple strategies
-            next_button = None
-            
-            strategies = [
-                lambda: self.driver.find_element(By.LINK_TEXT, "Next"),
-                lambda: self.driver.find_element(By.PARTIAL_LINK_TEXT, "Next"),
-                lambda: self.driver.find_element(By.XPATH, "//a[contains(@class, 'pagination') and contains(text(), 'Next')]"),
-                lambda: self.driver.find_element(By.XPATH, "//a[@aria-label='Next' or @aria-label='next']"),
-                lambda: self.driver.find_element(By.XPATH, "//a[contains(@href, 'start') and contains(text(), 'Next')]"),
-                lambda: self.driver.find_element(By.XPATH, "//a[contains(@class, 'pagination__link') and contains(text(), 'Next')]"),
-            ]
-            
-            for i, strategy in enumerate(strategies):
-                try:
-                    next_button = strategy()
-                    if next_button and next_button.is_displayed() and next_button.is_enabled():
-                        logger.debug(f"Found Next button using strategy {i+1}")
-                        break
-                except (NoSuchElementException, Exception) as e:
-                    logger.debug(f"Strategy {i+1} failed: {e}")
-                    continue
-            
-            if not next_button:
-                logger.warning("Next button not found with any strategy")
-                # Fallback: Try to find by looking at all pagination links
-                try:
-                    all_pagination_links = self.driver.find_elements(By.CSS_SELECTOR, 
-                        'a.pagination__link, .pagination a, .pager a')
-                    for link in all_pagination_links:
-                        if 'next' in link.text.lower() or 'next' in link.get_attribute('aria-label', '').lower():
-                            next_button = link
-                            break
-                except:
-                    pass
-            
-            if not next_button:
-                logger.error("Could not find Next button with any method")
-                return False
-            
-            # Scroll to button
-            try:
-                self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", next_button)
-                self._human_like_delay(1.0, 2.0)
-            except Exception as e:
-                logger.debug(f"Error scrolling to button: {e}")
-            
-            # Use ActionChains for more human-like click
-            try:
-                ActionChains(self.driver).move_to_element(next_button).pause(random.uniform(0.2, 0.5)).click().perform()
-            except Exception as e:
-                # Fallback to direct click
-                logger.debug(f"ActionChains failed, using direct click: {e}")
-                next_button.click()
-            
-            # Wait for page to load
-            self._human_like_delay(3, 6)
-            
-            # Dismiss cookie banner if it reappears
-            self._dismiss_cookie_banner()
-            
-            # Human-like scroll on new page
-            self._human_like_scroll()
-            
-            # Wait for table
-            try:
-                WebDriverWait(self.driver, 15).until(
-                    EC.presence_of_element_located((By.TAG_NAME, "table"))
-                )
-            except TimeoutException:
-                logger.warning("Table not found after clicking Next")
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error clicking Next button: {e}")
-            return False
-    
-    def _save_debug_html(self, page_num: int, content: str):
-        """Save HTML for debugging failed pages"""
-        debug_file = self.debug_dir / f"page_{page_num}.html"
-        with open(debug_file, 'w', encoding='utf-8') as f:
-            f.write(content)
-        logger.info(f"Saved debug HTML to {debug_file}")
-    
-    def _find_individual_tests_table(self, soup: BeautifulSoup) -> Optional:
-        """
-        Find the Individual Test Solutions table
-        
-        Since we're using ?type=1 URL parameter, the page should only show
-        Individual Test Solutions table. We just need to find the main table.
-        """
-        tables = soup.find_all('table')
-        logger.debug(f"Found {len(tables)} tables on page")
-        
+
+    def _rotate_user_agent(self) -> None:
+        self.session.headers["User-Agent"] = random.choice(self.user_agents)
+
+    def _find_individual_tests_table(self, soup: BeautifulSoup):
+        """Find the Individual Test Solutions table."""
+        tables = soup.find_all("table")
         if not tables:
             return None
-        
-        # Strategy 1: Look for table with "Test Type" header (main catalog table)
-        for idx, table in enumerate(tables):
-            headers = [th.get_text(strip=True) for th in table.find_all('th')]
-            
-            if any('Test Type' in h for h in headers):
-                # Double-check this is NOT pre-packaged by checking first few rows
-                is_prepackaged = False
-                for row in table.find_all('tr')[:5]:
-                    row_text = row.get_text().lower()
-                    if 'pre-packaged' in row_text or 'prepackaged' in row_text:
-                        is_prepackaged = True
-                        logger.warning(f"Table {idx} contains pre-packaged items, skipping")
-                        break
-                
-                if not is_prepackaged:
-                    logger.debug(f"Found Individual Test Solutions table (table {idx})")
+
+        for table in tables:
+            headers = [th.get_text(" ", strip=True).lower() for th in table.find_all("th")]
+            joined = " ".join(headers)
+            if "individual test solutions" in joined:
+                return table
+            if "assessment" in joined and "test type" in joined:
+                return table
+
+        for heading in soup.find_all(["h1", "h2", "h3", "h4"]):
+            text = heading.get_text(" ", strip=True).lower()
+            if "individual test" in text:
+                table = heading.find_next("table")
+                if table is not None:
                     return table
-        
-        # Strategy 2: Look for the "Individual Test Solutions" heading
-        for heading in soup.find_all(['h2', 'h3', 'h4']):
-            heading_text = heading.get_text(strip=True)
-            if 'Individual Test Solutions' in heading_text or 'Individual Tests' in heading_text:
-                next_table = heading.find_next('table')
-                if next_table:
-                    logger.debug(f"Found Individual Test Solutions table by heading: '{heading_text}'")
-                    return next_table
-        
-        # Strategy 3: First table (since we're on type=1 page, it should be the right one)
-        if tables:
-            logger.debug("Using first table (type=1 page should only have Individual Tests)")
-            return tables[0]
-        
-        logger.error("Could not find any table on page")
-        return None
-    
+
+        # Last fallback: use first table found on the page.
+        return tables[0]
+
+    def _parse_support_cell(self, cell, default: Optional[str] = None) -> Optional[str]:
+        if not cell:
+            return default
+
+        class_tokens = set()
+        for el in [cell] + cell.find_all(True):
+            for cls in (el.get("class") or []):
+                class_tokens.add(str(cls).strip().lower())
+
+        if "-yes" in class_tokens:
+            return "Yes"
+        if "-no" in class_tokens:
+            return "No"
+
+        text = cell.get_text(" ", strip=True).lower()
+        if re.search(r"\byes\b|supported|available|true|1", text):
+            return "Yes"
+        if re.search(r"\bno\b|not\s+supported|false|0", text):
+            return "No"
+        return default
+
+    def _extract_test_types(self, cell) -> Tuple[Optional[str], Optional[str]]:
+        key_spans = cell.select(".product-catalogue__key") if cell else []
+        if key_spans:
+            all_codes = [s.get_text(strip=True).upper() for s in key_spans if s.get_text(strip=True)]
+        else:
+            text = cell.get_text(" ", strip=True) if cell else ""
+            all_codes = re.findall(r"\b[ABCDEKPS]\b", text.upper())
+
+        normalized = [code for code in all_codes if re.fullmatch(r"[ABCDEKPS]", code)]
+        if not normalized:
+            return None, None
+
+        # Prioritize major families for primary type.
+        if "K" in normalized:
+            primary = "K"
+        elif "P" in normalized:
+            primary = "P"
+        else:
+            primary = normalized[0]
+
+        return primary, " ".join(normalized)
+
     def _parse_table_row(self, row) -> Optional[Dict]:
-        """Parse a table row to extract assessment information"""
-        try:
-            cells = row.find_all('td')
-            if len(cells) < 2:
-                return None
-            
-            assessment = {}
-            
-            # First cell: name and URL
-            first_cell = cells[0]
-            link = first_cell.find('a', href=True)
-            
-            if not link:
-                return None
-            
-            assessment['name'] = link.get_text(strip=True)
-            assessment['url'] = link.get('href', '')
-            
-            # CRITICAL: Filter out Pre-packaged Job Solutions
-            name_lower = assessment['name'].lower()
-            if 'pre-packaged' in name_lower or 'prepackaged' in name_lower or 'job solution' in name_lower:
-                logger.debug(f"Skipping Pre-packaged solution: {assessment['name']}")
-                return None
-            
-            # Make URL absolute
-            if assessment['url'] and not assessment['url'].startswith('http'):
-                assessment['url'] = f"https://www.shl.com{assessment['url']}"
-            
-            # Extract test type from last column
-            test_type_cell = cells[-1]
-            test_type_text = test_type_cell.get_text(strip=True)
-            test_type_codes = re.findall(r'[ABCDEKPS]', test_type_text)
-            
-            if test_type_codes:
-                if 'K' in test_type_codes:
-                    assessment['test_type'] = 'K'
-                elif 'P' in test_type_codes:
-                    assessment['test_type'] = 'P'
-                else:
-                    assessment['test_type'] = test_type_codes[0]
-                assessment['all_test_types'] = ' '.join(test_type_codes)
-            else:
-                assessment['test_type'] = None
-            
-            return assessment
-            
-        except Exception as e:
-            logger.debug(f"Error parsing table row: {e}")
+        cells = row.find_all("td")
+        if len(cells) < 2:
             return None
-    
-    def _get_pagination_info(self, soup: BeautifulSoup) -> Tuple[int, int]:
-        """Extract pagination information - focus on Individual Test Solutions pagination"""
-        total_pages = 32  # Default based on website structure
-        
-        # Strategy 1: Look for pagination in Individual Test Solutions section only
-        if self.use_selenium and self.driver:
+
+        link = cells[0].find("a", href=True)
+        if link is None:
+            return None
+
+        name = link.get_text(" ", strip=True)
+        if not name:
+            return None
+
+        if "pre-packaged" in name.lower() or "prepackaged" in name.lower():
+            return None
+
+        url = link.get("href", "").strip()
+        if url and not url.startswith("http"):
+            url = f"https://www.shl.com{url}"
+
+        remote_support = self._parse_support_cell(cells[1], default="No") if len(cells) >= 3 else None
+        adaptive_support = self._parse_support_cell(cells[2], default="No") if len(cells) >= 4 else None
+        test_type, all_test_types = self._extract_test_types(cells[-1])
+
+        return {
+            "name": name,
+            "url": url,
+            "remote_support": remote_support,
+            "adaptive_support": adaptive_support,
+            "test_type": test_type,
+            "all_test_types": all_test_types,
+        }
+
+    def _parse_catalog_page(self, html: str) -> List[Dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        table = self._find_individual_tests_table(soup)
+        if table is None:
+            return []
+
+        items: List[Dict] = []
+        for row in table.find_all("tr"):
+            if row.find("th"):
+                continue
+            parsed = self._parse_table_row(row)
+            if parsed:
+                items.append(parsed)
+
+        return items
+
+    def _extract_description(self, soup: BeautifulSoup) -> Optional[str]:
+        meta = soup.find("meta", attrs={"name": "description"})
+        if meta and meta.get("content"):
+            text = " ".join(meta.get("content", "").split())
+            if text:
+                return self._clean_description(text)
+
+        og = soup.find("meta", attrs={"property": "og:description"})
+        if og and og.get("content"):
+            text = " ".join(og.get("content", "").split())
+            if text:
+                return self._clean_description(text)
+
+        selectors = [
+            ".product-summary",
+            ".product-description",
+            ".field--name-body",
+            ".wysiwyg",
+            "article p",
+            ".typ p",
+        ]
+        for selector in selectors:
+            node = soup.select_one(selector)
+            if node:
+                text = " ".join(node.get_text(" ", strip=True).split())
+                if len(text) >= 30:
+                    return self._clean_description(text)
+
+        return None
+
+    def _clean_description(self, text: str) -> str:
+        text = re.sub(r"\s+", " ", text).strip()
+
+        # Remove trailing catalog metadata that often appears in scraped body text.
+        cut_markers = [
+            r"\bjob levels\b",
+            r"\blanguages\b",
+            r"\bassessment length\b",
+            r"\btest type\b",
+            r"\bremote testing\b",
+            r"\badaptive\/irt\b",
+            r"\bdownloads\b",
+        ]
+        lower = text.lower()
+        cut_index = len(text)
+        for marker in cut_markers:
+            match = re.search(marker, lower)
+            if match:
+                cut_index = min(cut_index, match.start())
+
+        text = text[:cut_index].strip(" ,;:-")
+        return text
+
+    def _extract_duration(self, soup: BeautifulSoup) -> Optional[int]:
+        text = soup.get_text(" ", strip=True)
+        if not text:
+            return None
+
+        patterns = [
+            r"approximate\s*completion\s*time\s*in\s*minutes\s*[=:]?\s*(\d{1,3})",
+            r"(?:assessment\s*length|duration|completion\s*time)\s*[=:]?\s*(\d{1,3})\s*(?:mins?|minutes?)",
+            r"\b(\d{1,3})\s*(?:mins?|minutes?)\b",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text, flags=re.IGNORECASE)
+            if not match:
+                continue
             try:
-                # Find pagination links specifically in the Individual Test Solutions table area
-                # Look for pagination after the second table (Individual Test Solutions)
-                pagination_containers = self.driver.find_elements(By.CSS_SELECTOR, 
-                    '.pagination, .pager, nav[aria-label*="pagination"]')
-                
-                selenium_nums = []
-                for container in pagination_containers:
-                    # Get all links in pagination
-                    links = container.find_elements(By.TAG_NAME, 'a')
-                    for link in links:
-                        text = link.text.strip()
-                        # Only consider numeric page numbers (not "Previous", "Next", etc.)
-                        if text.isdigit() and 1 <= int(text) <= 50:  # Reasonable range
-                            selenium_nums.append(int(text))
-                
-                if selenium_nums:
-                    total_pages = max(selenium_nums)
-                    logger.info(f"Found pagination: max page = {total_pages}")
-            except Exception as e:
-                logger.debug(f"Could not get pagination from Selenium: {e}")
-        
-        # Strategy 2: Look for ellipsis pattern (e.g., "1 2 3 ... 32")
-        if self.use_selenium and self.driver:
-            try:
-                page_text = self.driver.find_element(By.TAG_NAME, 'body').text
-                # Look for pattern like "... 32" or "… 32"
-                ellipsis_pattern = re.search(r'[……]|\.\.\.\s*(\d+)', page_text)
-                if ellipsis_pattern and ellipsis_pattern.group(1):
-                    found_pages = int(ellipsis_pattern.group(1))
-                    if 20 <= found_pages <= 50:  # Reasonable range for SHL
-                        total_pages = found_pages
-                        logger.info(f"Found pagination via ellipsis: {total_pages}")
-            except:
-                pass
-        
-        # Strategy 3: Check URL parameters in pagination links
-        if self.use_selenium and self.driver:
-            try:
-                all_links = self.driver.find_elements(By.CSS_SELECTOR, 'a[href*="start"]')
-                max_start = 0
-                for link in all_links:
-                    href = link.get_attribute('href')
-                    if href:
-                        match = re.search(r'start=(\d+)', href)
-                        if match:
-                            start_val = int(match.group(1))
-                            # Calculate page: start=0 is page 1, start=12 is page 2, etc.
-                            # So page = (start / 12) + 1
-                            page_num = (start_val // 12) + 1
-                            if page_num > max_start:
-                                max_start = page_num
-                
-                if max_start > 0 and max_start <= 50:
-                    total_pages = max_start
-                    logger.info(f"Found pagination via URL params: {total_pages}")
-            except:
-                pass
-        
-        logger.info(f"Detected {total_pages} total pages")
-        return 1, total_pages
-    
+                value = int(match.group(1))
+            except (TypeError, ValueError):
+                continue
+            if 1 <= value <= 240:
+                return value
+
+        return None
+
+    def _extract_yes_no_from_text(self, text: str, label_pattern: str) -> Optional[str]:
+        # Example matches:
+        #   Remote Testing: Yes
+        #   Adaptive/IRT = No
+        regex = re.compile(label_pattern + r"\s*[:=]?\s*(yes|no)", flags=re.IGNORECASE)
+        match = regex.search(text)
+        if not match:
+            return None
+        return "Yes" if match.group(1).lower() == "yes" else "No"
+
+    def _extract_yes_no(self, soup: BeautifulSoup, label_keywords: Iterable[str]) -> Optional[str]:
+        text = soup.get_text(" ", strip=True)
+        if not text:
+            return None
+
+        label = "(?:" + "|".join(re.escape(keyword) for keyword in label_keywords) + ")"
+        return self._extract_yes_no_from_text(text, label)
+
+    def _fetch_detail_soup(self, url: str) -> Optional[BeautifulSoup]:
+        html = self._fetch_html(url, max_retries=4)
+        if html is None:
+            return None
+        return BeautifulSoup(html, "html.parser")
+
+    def _enrich_assessment_details(self, assessments: List[Dict]) -> List[Dict]:
+        enriched: List[Dict] = []
+        total = len(assessments)
+
+        for idx, assessment in enumerate(assessments, start=1):
+            item = dict(assessment)
+            url = item.get("url")
+            if not url:
+                enriched.append(item)
+                continue
+
+            soup = self._fetch_detail_soup(url)
+            if soup is not None:
+                item["description"] = self._extract_description(soup)
+                item["duration"] = self._extract_duration(soup)
+
+                if item.get("remote_support") is None:
+                    item["remote_support"] = self._extract_yes_no(
+                        soup, ["remote testing", "remote support", "remote"]
+                    )
+                if item.get("adaptive_support") is None:
+                    item["adaptive_support"] = self._extract_yes_no(
+                        soup, ["adaptive/irt", "adaptive testing", "adaptive support", "adaptive"]
+                    )
+            else:
+                item.setdefault("description", None)
+                item.setdefault("duration", None)
+
+            enriched.append(item)
+            if idx % 25 == 0 or idx == total:
+                logger.info("Detail enrichment progress: %s/%s", idx, total)
+            time.sleep(random.uniform(0.15, 0.5))
+
+        return enriched
+
     def scrape_catalog(self) -> List[Dict]:
-        """Main method to scrape the SHL product catalog using Next button clicks"""
-        logger.info(f"Starting to scrape SHL catalog from {self.base_url}")
-        assessments = []
-        
-        try:
-            # Load initial page
-            if not self._load_initial_page():
-                logger.error("Failed to load initial page")
-                return assessments
-            
-            # Get page content and find pagination
-            page_content = self.driver.page_source
-            soup = BeautifulSoup(page_content, 'html.parser')
-            current_page, total_pages = self._get_pagination_info(soup)
-            
-            # Scrape all pages
-            consecutive_empty_pages = 0
-            max_consecutive_empty = 3  # Stop if 3 consecutive pages are empty
-            
-            for page_num in range(1, total_pages + 1):
-                logger.info(f"Scraping page {page_num}/{total_pages}")
-                
-                # Rotate session every N pages (but not on first page)
-                if page_num > 1 and page_num % self.session_rotation_interval == 1:
-                    logger.info(f"Session rotation: restarting browser (every {self.session_rotation_interval} pages)")
-                    # Restart browser for fresh session
-                    self._restart_browser()
-                    # Navigate to the page we need using URL (one-time after restart)
-                    # Then continue with Next button clicks
-                    # type=1 is for Individual Test Solutions (type=2 is Pre-packaged)
-                    resume_url = f"https://www.shl.com/products/product-catalog/?start={(page_num - 1) * 12}&type=1"
-                    logger.info(f"Resuming at page {page_num} via URL: {resume_url}")
-                    self.driver.get(resume_url)
-                    self._human_like_delay(3, 5)
-                    self._dismiss_cookie_banner()
-                    self._human_like_scroll()
-                    
-                    # Get page content directly (skip Next button click this time)
-                    page_content = self.driver.page_source
-                    soup = BeautifulSoup(page_content, 'html.parser')
-                    table = self._find_individual_tests_table(soup)
-                    
-                    if table:
-                        rows = table.find_all('tr')
-                        page_assessments = []
-                        for row in rows:
-                            if row.find('th'):
-                                continue
-                            assessment = self._parse_table_row(row)
-                            if assessment:
-                                page_assessments.append(assessment)
-                        
-                        logger.info(f"Found {len(page_assessments)} assessments on page {page_num} (after restart)")
-                        if page_assessments:
-                            assessments.extend(page_assessments)
-                            consecutive_empty_pages = 0
-                        else:
-                            consecutive_empty_pages += 1
-                            self._save_debug_html(page_num, page_content)
-                        
-                        # Continue to next iteration
-                        if page_num < total_pages:
-                            delay = random.uniform(2.0, 4.0)
-                            time.sleep(delay)
-                        continue
-                
-                # Normal flow: get page content
-                
-                # Get current page content
-                if page_num == 1:
-                    page_content = self.driver.page_source
-                else:
-                    # Click Next button for subsequent pages
-                    if not self._click_next_button():
-                        logger.error(f"Failed to navigate to page {page_num}")
-                        break
-                    page_content = self.driver.page_source
-                
-                # Parse page
-                soup = BeautifulSoup(page_content, 'html.parser')
-                table = self._find_individual_tests_table(soup)
-                
-                if not table:
-                    logger.warning(f"No table found on page {page_num}")
-                    self._save_debug_html(page_num, page_content)
-                    consecutive_empty_pages += 1
-                    if consecutive_empty_pages >= max_consecutive_empty:
-                        logger.error(f"Too many consecutive empty pages ({consecutive_empty_pages}), stopping")
-                        break
+        """Scrape catalog pages and enrich records from detail pages."""
+        logger.info("Starting SHL scrape from %s?type=%s", self.base_url, self.catalog_type)
+
+        all_items: List[Dict] = []
+        seen_urls = set()
+        empty_pages = 0
+
+        for page_index in range(self.max_pages):
+            start = page_index * self.page_size
+            page_url = self._catalog_page_url(start)
+            logger.info("Scraping page %s (start=%s)", page_index + 1, start)
+
+            html = self._fetch_html(page_url)
+            if html is None:
+                logger.warning("Skipping page due to repeated fetch failures: %s", page_url)
+                empty_pages += 1
+                if empty_pages >= 3:
+                    logger.error("Stopping scrape after repeated fetch failures")
+                    break
+                continue
+
+            page_items = self._parse_catalog_page(html)
+            if not page_items:
+                empty_pages += 1
+                logger.info("No assessment rows found on page %s", page_index + 1)
+                if empty_pages >= 2:
+                    logger.info("Stopping pagination after %s consecutive empty pages", empty_pages)
+                    break
+                continue
+
+            empty_pages = 0
+            new_count = 0
+            for item in page_items:
+                url = item.get("url")
+                if not url or url in seen_urls:
                     continue
-                
-                # Parse table rows
-                rows = table.find_all('tr')
-                page_assessments = []
-                
-                for row in rows:
-                    if row.find('th'):
-                        continue
-                    assessment = self._parse_table_row(row)
-                    if assessment:
-                        page_assessments.append(assessment)
-                
-                logger.info(f"Found {len(page_assessments)} assessments on page {page_num}")
-                
-                if len(page_assessments) == 0:
-                    consecutive_empty_pages += 1
-                    logger.warning(f"Empty page {page_num} (consecutive: {consecutive_empty_pages})")
-                    self._save_debug_html(page_num, page_content)
-                    
-                    if consecutive_empty_pages >= max_consecutive_empty:
-                        logger.error(f"Too many consecutive empty pages ({consecutive_empty_pages}), stopping")
-                        break
-                else:
-                    consecutive_empty_pages = 0  # Reset counter
-                    assessments.extend(page_assessments)
-                
-                # Random delay between pages (longer for later pages)
-                if page_num < total_pages:
-                    # Progressive delays: start at 3-6s, increase to 5-10s, then 7-15s
-                    if page_num < 5:
-                        base_delay = 3.0
-                        max_multiplier = 2.0
-                    elif page_num < 10:
-                        base_delay = 5.0
-                        max_multiplier = 2.0
-                    else:
-                        base_delay = 7.0
-                        max_multiplier = 2.2
-                    
-                    delay = random.uniform(base_delay, base_delay * max_multiplier)
-                    logger.debug(f"Waiting {delay:.2f}s before next page")
-                    time.sleep(delay)
-            
-            logger.info(f"Scraped {len(assessments)} Individual Test Solutions from {total_pages} pages")
-            
-            # Remove duplicates
-            seen_urls = set()
-            unique_assessments = []
-            for assessment in assessments:
-                url = assessment.get('url')
-                if url and url not in seen_urls:
-                    seen_urls.add(url)
-                    unique_assessments.append(assessment)
-            
-            logger.info(f"After deduplication: {len(unique_assessments)} unique assessments")
-            return unique_assessments
-            
-        except Exception as e:
-            logger.error(f"Error during scraping: {e}", exc_info=True)
-            return assessments
-        
-        finally:
-            if self.driver:
-                self.driver.quit()
-    
+                seen_urls.add(url)
+                all_items.append(item)
+                new_count += 1
+
+            logger.info("Page %s yielded %s new assessments", page_index + 1, new_count)
+
+            # A page with no new URLs means we've reached the end.
+            if new_count == 0:
+                logger.info("No new URLs found; stopping pagination")
+                break
+
+            time.sleep(random.uniform(0.8, 1.8))
+
+        logger.info("Collected %s unique assessments before detail enrichment", len(all_items))
+        enriched = self._enrich_assessment_details(all_items)
+        logger.info("Scrape complete: %s assessments", len(enriched))
+        return enriched
+
     def close(self):
-        """Close browser and cleanup"""
-        if self.driver:
-            self.driver.quit()
-            logger.info("Browser closed")
+        """No-op kept for API compatibility with previous Selenium implementation."""
+        return
 
 
 def scrape_shl_catalog(
-    output_path: str = "data/raw_catalog.json", 
+    output_path: str = "data/raw_catalog.json",
     use_selenium: bool = True,
     session_rotation_interval: int = 5,
-    headless: bool = False
+    headless: bool = True,
 ) -> List[Dict]:
-    """
-    Convenience function to scrape SHL catalog and save results
-    
-    Args:
-        output_path: Path to save scraped data
-        use_selenium: Whether to use Selenium
-        session_rotation_interval: Restart browser every N pages
-        headless: Run browser in headless mode (default: False for better stealth)
-        
-    Returns:
-        List of assessment dictionaries
-    """
-    scraper = SHLScraper(use_selenium=use_selenium, headless=headless, session_rotation_interval=session_rotation_interval)
-    
+    """Scrape SHL catalog and persist raw JSON output."""
+    scraper = SHLScraper(
+        use_selenium=use_selenium,
+        headless=headless,
+        session_rotation_interval=session_rotation_interval,
+    )
+
     try:
         assessments = scraper.scrape_catalog()
-        
-        # Add metadata
         output_data = {
-            'scraped_at': datetime.now().isoformat(),
-            'source_url': scraper.base_url,
-            'total_count': len(assessments),
-            'assessments': assessments
+            "scraped_at": datetime.now().isoformat(),
+            "source_url": f"{scraper.base_url}?type={scraper.catalog_type}",
+            "total_count": len(assessments),
+            "assessments": assessments,
         }
-        
-        # Save to file
+
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             json.dump(output_data, f, indent=2, ensure_ascii=False)
-        
-        logger.info(f"Saved {len(assessments)} assessments to {output_path}")
-        
+
+        logger.info("Saved %s assessments to %s", len(assessments), output_path)
         return assessments
-        
     finally:
         scraper.close()
 
 
 if __name__ == "__main__":
-    # Run scraper
-    assessments = scrape_shl_catalog()
-    print(f"\nScraped {len(assessments)} Individual Test Solutions")
+    results = scrape_shl_catalog()
+    print(f"Scraped {len(results)} Individual Test Solutions")

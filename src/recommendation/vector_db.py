@@ -127,7 +127,11 @@ class VectorDB:
                 'name': assessment.get('name') or '',
                 'url': assessment.get('url') or '',
                 'test_type': assessment.get('test_type') or '',
+                'all_test_types': assessment.get('all_test_types') or '',
                 'description': description[:1000],  # Limit metadata size
+                'duration': assessment.get('duration') if assessment.get('duration') is not None else 0,
+                'remote_support': assessment.get('remote_support') or '',
+                'adaptive_support': assessment.get('adaptive_support') or '',
                 'category': assessment.get('category') or ''
             }
             
@@ -265,7 +269,6 @@ if __name__ == "__main__":
         print("Note: Requires PINECONE_API_KEY environment variable")
     except Exception as e:
         print(f"Error: {e}")
-
 
 
 

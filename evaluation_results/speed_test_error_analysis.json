@@ -1,0 +1,55 @@
+{
+  "total_queries": 10,
+  "low_recall_count": 0,
+  "zero_recall_count": 0,
+  "perfect_recall_count": 10,
+  "low_recall_queries": [],
+  "zero_recall_queries": [],
+  "perfect_recall_queries": [
+    {
+      "query_index": 0,
+      "query": "I am hiring for Java developers who can also collaborate effectively with my business teams. Looking for an assessment(s) that can be completed in 40 minutes.",
+      "recall@10": 1.0,
+      "precision@10": 0.5,
+      "relevant_found": 5,
+      "total_relevant": 5,
+      "predicted_count": 10
+    },
+    {
+      "query_index": 1,
+      "query": "I want to hire new graduates for a sales role in my company, the budget is for about an hour for each test. Give me some options",
+      "recall@10": 1.0,
+      "precision@10": 0.6,
+      "relevant_found": 6,
+      "total_relevant": 6,
+      "predicted_count": 10
+    },
+    {
+      "query_index": 2,
+      "query": "I am looking for a COO for my company in China and I want to see if they are culturally a right fit for our company. Suggest me an assessment that they can complete in about an hour",
+      "recall@10": 1.0,
+      "precision@10": 0.6,
+      "relevant_found": 6,
+      "total_relevant": 6,
+      "predicted_count": 10
+    },
+    {
+      "query_index": 3,
+      "query": "KEY RESPONSIBITILES:\n\nManage the sound-scape of the station through appropriate creative and marketing interventions to Increase or Maintain the listenership\nActs as an interface between Programming & sales team, thereby supporting the sales team by providing creative inputs in order to increase the overall ad spends by clients\nBuild brand Mirchi by ideating fresh programming initiatives on air campaigns, programming led on-ground events & new properties to ensure brand differentiation & thus increase brand recall at station level\nInvest time in local RJs to grow & develop them as local celebrities\nThrough strong networking, must focus on identifying the best of local talent and ensure to bring the creative minds from the market on board with Mirchi\nBuild radio as a category for both listeners & advertisers\nPeople Management\nIdentifying the right talent and investing time in developing them by frequent feedback on their performance\nMonitor, Coach and mentor team members on a regular basis\nDevelopment of Jocks as per guidelines\nMust have an eye to spot the local talent to fill up vacancies locally\n\n\n\n\nTECHNICAL SKILLS & QUALIFICATION REQUIRED:\n\nGraduation / Post Graduation (Any specialisation) with 8 -12 years of relevant experience\nExperience in digital content conceptualisation\nStrong branding focus\nMust be well-read in variety of areas and must keep up with the latest events in the city / cluster / country\nMust know to read, write & speak English \n\n\nPERSONAL ATTRIBUTES:\n\nExcellent communication skills\nGood interpersonal skills\nPeople management\n\n\nSuggest me some tests for the above jd. The duration should be at most 90 mins",
+      "recall@10": 1.0,
+      "precision@10": 0.5,
+      "relevant_found": 5,
+      "total_relevant": 5,
+      "predicted_count": 10
+    },
+    {
+      "query_index": 4,
+      "query": "Content Writer required, expert in English and SEO.",
+      "recall@10": 1.0,
+      "precision@10": 0.5,
+      "relevant_found": 5,
+      "total_relevant": 5,
+      "predicted_count": 10
+    }
+  ]
+}

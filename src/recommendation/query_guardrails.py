@@ -56,7 +56,9 @@ class QueryGuardrails:
         "manager", "sales", "communication", "collaboration", "leadership",
         "teamwork", "behavioral", "personality", "technical", "coding",
         "programming", "python", "java", "sql", "data", "problem-solving",
-        "problem", "graduate", "graduates", "customer", "support", "soft", "hard"
+        "problem", "graduate", "graduates", "customer", "support", "soft", "hard",
+        "content", "writer", "english", "seo", "marketing", "qa", "testing",
+        "selenium", "consultant", "bank", "administrative", "admin"
     }
 
     @staticmethod

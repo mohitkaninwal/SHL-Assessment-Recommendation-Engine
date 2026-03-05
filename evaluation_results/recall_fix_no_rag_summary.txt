@@ -1,25 +1,27 @@
 ================================================================================
 EVALUATION SUMMARY
 ================================================================================
-Iteration: test1
-Timestamp: 2025-12-30T17:00:45.433048
+Iteration: recall_fix_no_rag
+Timestamp: 2026-03-05T12:16:36.133605
 Dataset: Gen_AI Dataset.xlsx
 Queries: 10
 Top K: 10
 
 Configuration:
-  RAG Pipeline: Enabled
-  LLM Re-ranking: Disabled
+  RAG Pipeline: Disabled
+  LLM Re-ranking: Enabled
   Query Expansion: Disabled
 
 Metrics:
-  Mean Recall@10: 0.0000
-  Mean Recall@5:  0.0000
-  Mean Precision@10: 0.0000
-  F1@10: 0.0000
+  Mean Recall@10: 0.9889
+  Mean Recall@5:  0.8778
+  Mean Precision@10: 0.5800
+  F1@10: 0.7312
+  Retrieval Mean Recall@10: 0.9889
+  Retrieval Mean Recall@5:  0.8778
 
 Error Analysis:
-  Low Recall (<0.5): 10/10
-  Zero Recall: 10/10
-  Perfect Recall: 0/10
+  Low Recall (<0.5): 0/10
+  Zero Recall: 0/10
+  Perfect Recall: 9/10
 ================================================================================

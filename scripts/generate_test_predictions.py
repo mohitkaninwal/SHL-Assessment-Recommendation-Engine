@@ -24,44 +24,39 @@ logger = logging.getLogger(__name__)
 
 def validate_csv_format(csv_file: str) -> bool:
     """
-    Validate CSV format matches requirements
-    
-    Required format:
-    - Columns: query, assessment_url
+    Validate CSV format matches requirements (submission or lowercase).
+
+    Accepted formats:
+    - Columns: query, assessment_url  OR  Query, Assessment_url
     - Multiple rows per query (one per recommendation)
-    
-    Args:
-        csv_file: Path to CSV file
-        
-    Returns:
-        True if valid, False otherwise
     """
     try:
         df = pd.read_csv(csv_file)
-        
-        # Check columns
-        required_columns = ['query', 'assessment_url']
-        if list(df.columns) != required_columns:
-            logger.error(f"Invalid columns. Expected {required_columns}, got {list(df.columns)}")
+        cols = [c.strip() for c in df.columns]
+
+        # Accept either submission or lowercase headers
+        if cols == ["query", "assessment_url"]:
+            qcol, acol = "query", "assessment_url"
+        elif cols == ["Query", "Assessment_url"]:
+            qcol, acol = "Query", "Assessment_url"
+        else:
+            logger.error(f"Invalid columns. Expected query/assessment_url or Query/Assessment_url, got {cols}")
             return False
-        
-        # Check for empty values
+
         if df.isnull().any().any():
             logger.warning("CSV contains null values")
-        
-        # Check for duplicate rows
+
         duplicates = df.duplicated()
         if duplicates.any():
             logger.warning(f"CSV contains {duplicates.sum()} duplicate rows")
-        
-        # Log statistics
-        logger.info(f"CSV Validation:")
+
+        logger.info("CSV Validation:")
         logger.info(f"  Total rows: {len(df)}")
-        logger.info(f"  Unique queries: {df['query'].nunique()}")
-        logger.info(f"  Avg recommendations per query: {len(df) / df['query'].nunique():.1f}")
-        
+        logger.info(f"  Unique queries: {df[qcol].nunique()}")
+        logger.info(f"  Avg recommendations per query: {len(df) / df[qcol].nunique():.1f}")
+
         return True
-        
+
     except Exception as e:
         logger.error(f"Error validating CSV: {e}")
         return False
@@ -102,7 +97,19 @@ def main():
         action='store_true',
         help='Enable query expansion with LLM'
     )
-    
+    parser.add_argument(
+        '--submission-format',
+        action='store_true',
+        default=True,
+        help='Output CSV with headers Query,Assessment_url (submission format). Default: True.'
+    )
+    parser.add_argument(
+        '--no-submission-format',
+        action='store_false',
+        dest='submission_format',
+        help='Output CSV with headers query,assessment_url'
+    )
+
     args = parser.parse_args()
     
     logger.info("=" * 80)
@@ -134,6 +141,12 @@ def main():
             output_file=args.output
         )
         
+        # Use submission headers (Query, Assessment_url) if requested
+        if args.submission_format and not df.empty:
+            df = df.rename(columns={'query': 'Query', 'assessment_url': 'Assessment_url'})
+            df.to_csv(args.output, index=False)
+            logger.info("CSV written with submission headers: Query, Assessment_url")
+
         # Validate CSV format
         logger.info("\nValidating CSV format...")
         is_valid = validate_csv_format(args.output)
@@ -155,11 +168,12 @@ def main():
         print(f"  RAG Pipeline: {'Enabled' if not args.no_rag else 'Disabled'}")
         print(f"  LLM Re-ranking: {'Enabled' if not args.no_reranking else 'Disabled'}")
         print(f"  Query Expansion: {'Enabled' if args.expand_query else 'Disabled'}")
+        qcol = "Query" if "Query" in df.columns else "query"
         print(f"\nOutput:")
         print(f"  File: {args.output}")
         print(f"  Total rows: {len(df)}")
-        print(f"  Unique queries: {df['query'].nunique()}")
-        print(f"  Avg recommendations per query: {len(df) / df['query'].nunique():.1f}")
+        print(f"  Unique queries: {df[qcol].nunique()}")
+        print(f"  Avg recommendations per query: {len(df) / df[qcol].nunique():.1f}")
         print(f"\nFormat: ✓ Valid" if is_valid else "\nFormat: ✗ Invalid")
         print("=" * 80)
         

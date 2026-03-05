@@ -33,7 +33,8 @@ AI-powered recommendation system that maps hiring queries to relevant SHL assess
 - Chrome + ChromeDriver (for Selenium scraping)
 - API keys:
   - `PINECONE_API_KEY`
-  - `GROQ_API_KEY`
+  - `GEMINI_API_KEY` (preferred)
+  - `GROQ_API_KEY` (optional fallback)
 
 ## Setup
 
@@ -47,8 +48,8 @@ Set required values in `.env`:
 
 - `PINECONE_API_KEY`
 - `PINECONE_INDEX_NAME=shl-assessments`
-- `GROQ_API_KEY`
-- `LLM_MODEL=llama-3.3-70b-versatile`
+- `GEMINI_API_KEY`
+- `LLM_MODEL=gemini-1.5-flash`
 - `API_PORT=8000`
 - `FRONTEND_PORT=8501`
 - `API_BASE_URL=http://localhost:8000`
@@ -121,11 +122,16 @@ In frontend:
 
 ```bash
 # Train-set evaluation
-LLM_MODEL=llama-3.3-70b-versatile python scripts/evaluate.py --iteration baseline
+LLM_MODEL=gemini-1.5-flash python scripts/evaluate.py --iteration baseline
 
-# Generate test-set submission CSV
-LLM_MODEL=llama-3.3-70b-versatile python scripts/generate_test_predictions.py --output test_predictions.csv
+# Enforce evaluation criteria (exit 1 if Mean Recall@10 below threshold)
+python scripts/evaluate.py --no-rag --min-recall 0.5 --iteration implementation_check
+
+# Generate test-set submission CSV (Query, Assessment_url)
+LLM_MODEL=gemini-1.5-flash python scripts/generate_test_predictions.py --output test_predictions.csv
 ```
+
+Evaluation criteria (metrics, catalog, CSV format, API) are documented in **`docs/EVALUATION_CRITERIA.md`**. Use `--min-recall 0.5` or `--min-recall 0.6` to require a minimum Mean Recall@10.
 
 ## Testing
 
@@ -160,7 +166,7 @@ Prepare and verify:
 - Public API URL
 - Public frontend URL
 - Repository URL
-- `test_predictions.csv` (`query,assessment_url`)
+- `test_predictions.csv` (`Query,Assessment_url`)
 - 2-page approach document PDF (from `docs/APPROACH_DOCUMENT.md`)
 
 Run local readiness check:

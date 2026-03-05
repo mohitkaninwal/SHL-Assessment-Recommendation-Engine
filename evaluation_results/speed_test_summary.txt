@@ -1,8 +1,8 @@
 ================================================================================
 EVALUATION SUMMARY
 ================================================================================
-Iteration: baseline
-Timestamp: 2025-12-30T16:59:46.538329
+Iteration: speed_test
+Timestamp: 2026-03-05T12:17:20.172078
 Dataset: Gen_AI Dataset.xlsx
 Queries: 10
 Top K: 10
@@ -13,13 +13,15 @@ Configuration:
   Query Expansion: Disabled
 
 Metrics:
-  Mean Recall@10: 0.0000
-  Mean Recall@5:  0.0000
-  Mean Precision@10: 0.0000
-  F1@10: 0.0000
+  Mean Recall@10: 1.0000
+  Mean Recall@5:  0.8778
+  Mean Precision@10: 0.5900
+  F1@10: 0.7421
+  Retrieval Mean Recall@10: 0.9889
+  Retrieval Mean Recall@5:  0.8778
 
 Error Analysis:
-  Low Recall (<0.5): 10/10
-  Zero Recall: 10/10
-  Perfect Recall: 0/10
+  Low Recall (<0.5): 0/10
+  Zero Recall: 0/10
+  Perfect Recall: 10/10
 ================================================================================

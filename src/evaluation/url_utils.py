@@ -5,6 +5,35 @@ URL normalization utilities for evaluation.
 from typing import List, Set, Tuple
 
 
+LEGACY_URL_ALIASES = {
+    # Sales legacy variants
+    "https://www.shl.com/products/product-catalog/view/entry-level-sales-7-1":
+        "https://www.shl.com/products/product-catalog/view/entry-level-sales-solution",
+    "https://www.shl.com/products/product-catalog/view/entry-level-sales-sift-out-7-1":
+        "https://www.shl.com/products/product-catalog/view/entry-level-sales-solution",
+    "https://www.shl.com/products/product-catalog/view/sales-representative-solution":
+        "https://www.shl.com/products/product-catalog/view/entry-level-sales-solution",
+    "https://www.shl.com/products/product-catalog/view/technical-sales-associate-solution":
+        "https://www.shl.com/products/product-catalog/view/sales-and-service-phone-solution",
+    # Admin/banking legacy variants
+    "https://www.shl.com/products/product-catalog/view/administrative-professional-short-form":
+        "https://www.shl.com/products/product-catalog/view/workplace-administration-skills-new",
+    "https://www.shl.com/products/product-catalog/view/bank-administrative-assistant-short-form":
+        "https://www.shl.com/products/product-catalog/view/workplace-administration-skills-new",
+    "https://www.shl.com/products/product-catalog/view/financial-professional-short-form":
+        "https://www.shl.com/products/product-catalog/view/financial-and-banking-services-new",
+    "https://www.shl.com/products/product-catalog/view/general-entry-level-data-entry-7-0-solution":
+        "https://www.shl.com/products/product-catalog/view/basic-computer-literacy-windows-10-new",
+    # Legacy manager/professional solution variants
+    "https://www.shl.com/products/product-catalog/view/manager-8-0-jfa-4310":
+        "https://www.shl.com/products/product-catalog/view/sales-transformation-report-sales-manager",
+    "https://www.shl.com/products/product-catalog/view/professional-7-0-solution-3958":
+        "https://www.shl.com/products/product-catalog/view/global-skills-assessment",
+    "https://www.shl.com/products/product-catalog/view/professional-7-1-solution":
+        "https://www.shl.com/products/product-catalog/view/global-skills-assessment",
+}
+
+
 def canonicalize_assessment_url(url: str) -> str:
     """
     Canonicalize SHL assessment URLs for fair matching.
@@ -20,6 +49,7 @@ def canonicalize_assessment_url(url: str) -> str:
         "https://www.shl.com/solutions/products/product-catalog/view/",
         "https://www.shl.com/products/product-catalog/view/",
     )
+    normalized = LEGACY_URL_ALIASES.get(normalized, normalized)
     return normalized
 
 
